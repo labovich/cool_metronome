@@ -2,8 +2,8 @@
 
 A precise, lightweight, open-source metronome for Windows and macOS, written in Rust.
 
-> **Status:** early development (stage 4 of 8: main window done; title bar, compact mode
-> and keyboard control next).
+> **Status:** early development (stage 4 of 8 done: the main window, compact mode and
+> keyboard control; settings, presets and own sounds are next).
 
 ## Goals
 

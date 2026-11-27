@@ -55,6 +55,22 @@ impl TempoEdit {
     }
 }
 
+/// A request from the window chrome (title bar, compact strip).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowAction {
+    /// Start moving the window with the mouse.
+    Drag,
+    /// Switch between the full window and the compact strip.
+    ToggleCompact,
+    /// Toggle "always on top".
+    TogglePin,
+    Minimize,
+    Close,
+}
+
+/// Title bar height (mockup).
+pub const TITLE_H: f32 = 36.0;
+
 /// What the main view needs for one frame.
 pub struct View<'a> {
     pub player: &'a mut Player,
@@ -439,26 +455,7 @@ impl View<'_> {
         let label = self.i18n.tr("tap-hint");
         tap_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
 
-        let playing = self.player.is_playing();
-        let play_resp = ui
-            .interact(play, Id::unique("play"), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        let fill = if play_resp.hovered() {
-            theme::mix(ACCENT, Color32::WHITE, 0.12)
-        } else {
-            ACCENT
-        };
-        painter.circle_filled(play.center(), 26.0, fill);
-        let (icon, size, label) = if playing {
-            (Icon::Stop, 18.0, self.i18n.tr("stop"))
-        } else {
-            (Icon::Play, 20.0, self.i18n.tr("play"))
-        };
-        icons::paint(&painter, play.center(), size, icon, ON_ACCENT, 2.0);
-        play_resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
-        if play_resp.clicked() {
-            self.player.toggle();
-        }
+        self.play_button(ui, play, 18.0, 20.0);
     }
 
     fn meter_menu(&mut self, resp: &Response) {
@@ -558,9 +555,281 @@ impl View<'_> {
         }
     }
 
+    // ------------------------------------------------------------ window chrome
+
+    /// The custom title bar: logo, name, pin, tray, minimize, close.
+    /// Dragging moves the window, a double-click switches to compact mode.
+    pub fn title_bar(&mut self, ui: &mut Ui, rect: Rect, pinned: bool) -> Option<WindowAction> {
+        let mut action = None;
+        // The drag area goes first so the buttons on top of it win.
+        let bar = ui.interact(rect, Id::unique("title-bar"), Sense::click_and_drag());
+        if bar.double_clicked() {
+            action = Some(WindowAction::ToggleCompact);
+        } else if bar.drag_started() {
+            action = Some(WindowAction::Drag);
+        }
+        let hint = self.i18n.tr("window-compact-hint");
+        bar.on_hover_text_at_pointer(hint);
+
+        let painter = ui.painter();
+        let cy = rect.center().y;
+        icons::paint(
+            painter,
+            pos2(rect.left() + 14.0 + 8.0, cy),
+            16.0,
+            Icon::Logo,
+            ACCENT,
+            2.0,
+        );
+        let title = text(
+            painter,
+            &self.i18n.tr("app-title"),
+            theme::bold(13.0),
+            self.p.text2,
+            0.0,
+        );
+        painter.galley(
+            pos2(rect.left() + 14.0 + 16.0 + 8.0, cy - title.size().y / 2.0),
+            title,
+            self.p.text2,
+        );
+
+        // Buttons from the right: close, minimize, tray, pin (32×28, 2 apart).
+        let button = |i: f32| {
+            let right = rect.right() - 4.0 - i * (32.0 + 2.0);
+            Rect::from_min_size(pos2(right - 32.0, cy - 14.0), vec2(32.0, 28.0))
+        };
+        let label = self.i18n.tr("window-close");
+        if self
+            .bar_button(ui, button(0.0), Icon::Close, &label, false, true)
+            .clicked()
+        {
+            action = Some(WindowAction::Close);
+        }
+        let label = self.i18n.tr("window-minimize");
+        if self
+            .bar_button(ui, button(1.0), Icon::Minus, &label, false, true)
+            .clicked()
+        {
+            action = Some(WindowAction::Minimize);
+        }
+        // Tray arrives in stage 6: shown, but inactive.
+        let label = self.i18n.tr("window-tray");
+        self.bar_button(ui, button(2.0), Icon::Tray, &label, false, false)
+            .on_hover_text(self.i18n.tr("window-tray-later"));
+        let label = self.i18n.tr("window-pin");
+        if self
+            .bar_button(ui, button(3.0), Icon::Pin, &label, pinned, true)
+            .clicked()
+        {
+            action = Some(WindowAction::TogglePin);
+        }
+        action
+    }
+
+    /// The compact strip (440×96): tempo ±, beats, Play, expand, close.
+    /// The background drags the window; a double-click expands it.
+    pub fn show_compact(&mut self, ui: &mut Ui, rect: Rect) -> Option<WindowAction> {
+        let mut action = None;
+        let bg = ui.interact(rect, Id::unique("compact-bg"), Sense::click_and_drag());
+        if bg.double_clicked() {
+            action = Some(WindowAction::ToggleCompact);
+        } else if bg.drag_started() {
+            action = Some(WindowAction::Drag);
+        }
+        let cy = rect.center().y;
+
+        // Left: − BPM +.
+        let mut x = rect.left() + 14.0;
+        let minus = Rect::from_min_size(pos2(x, cy - 16.0), vec2(32.0, 32.0));
+        x = minus.right() + 6.0;
+        let number = Rect::from_min_size(pos2(x, cy - 24.0), vec2(76.0, 48.0));
+        x = number.right() + 6.0;
+        let plus = Rect::from_min_size(pos2(x, cy - 16.0), vec2(32.0, 32.0));
+        let step = if ui.input(|i| i.modifiers.shift) {
+            0.1
+        } else {
+            1.0
+        };
+        let label = self.i18n.tr("tempo-slower");
+        if self
+            .circle_icon(ui, minus, Icon::Minus, 14.0, 2.4, &label)
+            .clicked()
+        {
+            self.player.set_tempo(self.player.tempo().offset(-step));
+        }
+        let label = self.i18n.tr("tempo-faster");
+        if self
+            .circle_icon(ui, plus, Icon::Plus, 14.0, 2.4, &label)
+            .clicked()
+        {
+            self.player.set_tempo(self.player.tempo().offset(step));
+        }
+        let tempo = self.player.tempo();
+        let painter = ui.painter();
+        let bpm_text = tempo.to_string();
+        // Tenths make the number longer: shrink it to stay within 76 pt.
+        let size = if bpm_text.len() > 3 { 28.0 } else { 34.0 };
+        let bpm = text(painter, &bpm_text, theme::bold(size), self.p.text, -1.0);
+        let (meter, _) = meter_label(self.player.meter(), self.rhythms, self.i18n);
+        let sub = text_elided(
+            painter,
+            &format!("BPM · {meter}"),
+            theme::medium(11.0),
+            self.p.text2,
+            0.4,
+            number.width() + 24.0,
+        );
+        let top = cy - (36.0 + sub.size().y) / 2.0;
+        painter.galley(
+            pos2(
+                number.center().x - bpm.size().x / 2.0,
+                top + (36.0 - bpm.size().y) / 2.0,
+            ),
+            bpm,
+            self.p.text,
+        );
+        painter.galley(
+            pos2(number.center().x - sub.size().x / 2.0, top + 36.0),
+            sub,
+            self.p.text2,
+        );
+
+        // Right: expand and close stacked, then Play.
+        let col_x = rect.right() - 6.0 - 30.0;
+        let expand = Rect::from_min_size(pos2(col_x, cy - 32.0), vec2(30.0, 30.0));
+        let close = Rect::from_min_size(pos2(col_x, cy + 2.0), vec2(30.0, 30.0));
+        let label = self.i18n.tr("window-expand");
+        if self
+            .bar_button(ui, expand, Icon::Expand, &label, false, true)
+            .clicked()
+        {
+            action = Some(WindowAction::ToggleCompact);
+        }
+        let label = self.i18n.tr("window-close");
+        if self
+            .bar_button(ui, close, Icon::Close, &label, false, true)
+            .clicked()
+        {
+            action = Some(WindowAction::Close);
+        }
+        let play = Rect::from_center_size(pos2(col_x - 14.0 - 24.0, cy), vec2(48.0, 48.0));
+        self.play_button(ui, play, 16.0, 18.0);
+
+        // Middle: the beats (not clickable here).
+        let beats = Rect::from_min_max(
+            pos2(plus.right() + 14.0, rect.top()),
+            pos2(play.left() - 14.0, rect.bottom()),
+        );
+        self.compact_beats(ui, beats);
+        action
+    }
+
+    fn compact_beats(&self, ui: &Ui, rect: Rect) {
+        const GAP: f32 = 8.0;
+        let cells = self.player.meter().cells();
+        let current = self.player.audible_cell(self.now);
+        let playing = self.player.is_playing();
+        let size = |l: &BeatLevel| if *l == BeatLevel::Accent { 18.0 } else { 14.0 };
+        let natural: f32 =
+            cells.iter().map(size).sum::<f32>() + GAP * (cells.len().saturating_sub(1)) as f32;
+        let scale = ((rect.width() - 4.0) / natural).min(1.0);
+        let painter = ui.painter();
+        let mut x = rect.center().x - natural * scale / 2.0;
+        for (i, level) in cells.iter().enumerate() {
+            let d = size(level) * scale;
+            let center = pos2(x + d / 2.0, rect.center().y);
+            let on = current == Some(i);
+            let r = d / 2.0 * if on { 1.2 } else { 1.0 };
+            // While playing, the other beats dim so the current one stands out.
+            let dim = |c: Color32| {
+                if playing && !on {
+                    c.gamma_multiply(0.45)
+                } else {
+                    c
+                }
+            };
+            match level {
+                BeatLevel::Accent => painter.circle_filled(center, r, dim(ACCENT)),
+                BeatLevel::Normal => painter.circle_filled(center, r, dim(self.p.beat)),
+                BeatLevel::Mute => painter.circle_stroke(
+                    center,
+                    r - scale,
+                    Stroke::new(1.5 * scale, dim(self.p.border2)),
+                ),
+            };
+            x += d + GAP * scale;
+        }
+    }
+
+    /// A transparent title-bar style button (32×28 or 30×30).
+    fn bar_button(
+        &self,
+        ui: &Ui,
+        rect: Rect,
+        icon: Icon,
+        label: &str,
+        active: bool,
+        enabled: bool,
+    ) -> Response {
+        let sense = if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let mut resp = ui.interact(rect, Id::unique(("bar", label)), sense);
+        if enabled {
+            resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+        }
+        let painter = ui.painter();
+        let (fill, color) = if active {
+            let fill = theme::mix(self.p.surface, ACCENT, 0.22);
+            (Some(fill), ACCENT)
+        } else if enabled && resp.is_pointer_button_down_on() {
+            (Some(self.p.surface_active()), self.p.text)
+        } else if enabled && resp.hovered() {
+            (Some(self.p.surface), self.p.text)
+        } else if enabled {
+            (None, self.p.text2)
+        } else {
+            (None, self.p.text2.gamma_multiply(0.5))
+        };
+        if let Some(fill) = fill {
+            painter.rect_filled(rect, 6.0, fill);
+        }
+        icons::paint(
+            painter,
+            icons::crisp_center(painter, rect),
+            15.0,
+            icon,
+            color,
+            2.0,
+        );
+        resp.widget_info(|| {
+            let mut info = WidgetInfo::labeled(Role::Button, enabled, label);
+            if icon == Icon::Pin {
+                info.selected = Some(active);
+            }
+            info
+        });
+        resp
+    }
+
     // ------------------------------------------------------------ widgets
 
     fn round_icon(&self, ui: &Ui, rect: Rect, icon: Icon, label: &str) -> Response {
+        self.circle_icon(ui, rect, icon, 18.0, 2.2, label)
+    }
+
+    fn circle_icon(
+        &self,
+        ui: &Ui,
+        rect: Rect,
+        icon: Icon,
+        size: f32,
+        stroke: f32,
+        label: &str,
+    ) -> Response {
         let resp = ui
             .interact(rect, Id::unique(("round", label)), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
@@ -570,13 +839,38 @@ impl View<'_> {
         icons::paint(
             painter,
             icons::crisp_center(painter, rect),
-            18.0,
+            size,
             icon,
             self.p.text,
-            2.2,
+            stroke,
         );
         resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
         resp
+    }
+
+    /// The accent Play/Stop button; toggles playback when clicked.
+    fn play_button(&mut self, ui: &Ui, rect: Rect, stop_size: f32, play_size: f32) {
+        let playing = self.player.is_playing();
+        let resp = ui
+            .interact(rect, Id::unique("play"), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let fill = if resp.hovered() {
+            theme::mix(ACCENT, Color32::WHITE, 0.12)
+        } else {
+            ACCENT
+        };
+        let painter = ui.painter();
+        painter.circle_filled(rect.center(), rect.width() / 2.0, fill);
+        let (icon, size, label) = if playing {
+            (Icon::Stop, stop_size, self.i18n.tr("stop"))
+        } else {
+            (Icon::Play, play_size, self.i18n.tr("play"))
+        };
+        icons::paint(painter, rect.center(), size, icon, ON_ACCENT, 2.0);
+        resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
+        if resp.clicked() {
+            self.player.toggle();
+        }
     }
 
     fn square_icon(&self, ui: &Ui, rect: Rect, icon: Icon, label: &str) -> Response {

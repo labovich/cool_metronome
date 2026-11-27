@@ -38,5 +38,5 @@ Run fmt, clippy and tests before handing work back.
 
 ## Current state
 
-Stages 1–3 and 4a done (see `docs/PLAN.md` → Stages): `cm-app` shows the main window per
-the mockup. Next: 4b (title bar, compact mode, keymap).
+Stages 1–4 done (see `docs/PLAN.md` → Stages): `cm-app` shows the UI per the mockup with
+its own title bar, compact mode and keyboard control. Next: owner checks 4b, then stage 5.

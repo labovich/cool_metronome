@@ -4,7 +4,6 @@
 use egui::{Color32, Painter, Pos2, Shape, Stroke, pos2, vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Logo, Pin, Tray, Close, Expand: title bar and compact mode (stage 4b).
 pub enum Icon {
     Minus,
     Plus,

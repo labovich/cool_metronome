@@ -36,6 +36,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Typed tempo: double-click the BPM number, type 1–999 ("." or "," for tenths),
   Enter applies, Esc cancels.
 - The beat indicator lights up when the beat is heard, not when it is rendered.
+- Own window frame: rounded borderless window, title bar with keep-on-top, minimize
+  and close; drag by the title bar, resize by the edges.
+- Compact mode (440×96): double-click the title bar; expand button or a
+  double-click on the strip returns to the full window.
+- Keyboard: Space play/stop, ←/→ ±1 BPM (Shift ±0.1), PgUp/PgDn and Ctrl+←/→ ±6,
+  Shift+= / Shift+− double/halve, ↑/↓ volume (Ctrl coarse), Enter or T tap,
+  1–8 meters (5 = 3+2), Ctrl+0…7 subdivisions, Alt+3 shuffle, Alt+4 quadruple
+  1st+4th. Mouse wheel changes the tempo, Ctrl+wheel the volume.
 
 ### Fixed
 - Audio housekeeping (freeing replaced objects, recovering a lost device) now

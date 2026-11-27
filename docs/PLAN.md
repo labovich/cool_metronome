@@ -62,7 +62,7 @@ Cargo workspace (`crates/`):
 | `cm-engine` | Sample-accurate scheduler + mixer, no device, no allocations in the hot path. Shared by playback, export and tests. | Done |
 | `cm-audio` | cpal output, rtrb command queue, retired-object queue, device recovery; later sample decoding (symphonia) + resampling (rubato). | Done (basic) |
 | `cm-export` | WAV (hound), FLAC (flacenc), OGG (vorbis_rs). | Stage 7 |
-| `cm-app` | egui app; tray-icon, global-hotkey, settings, Fluent i18n, update check. | Main window (stage 4a) |
+| `cm-app` | egui app; tray-icon, global-hotkey, settings, Fluent i18n, update check. | UI per mockup (stage 4) |
 | `cm-probe` | Loopback measurement tool for real hardware. | Stage 8 |
 
 ### Timing rules (do not break)
@@ -151,9 +151,13 @@ the period in f32 makes them fail.
      UI zoom, typed tempo (double-click the number), beat indicator in sync with what is
      heard, minimal repaints. Presets button
      is shown inactive until stage 5.
-   - **4b:** custom title bar (pin, hide to tray — inactive until stage 6, minimize, close),
-     window drag/resize, compact mode, default local keymap (shortcuts are ignored while a
-     text field such as the typed tempo has focus).
+   - **4b, done, pending owner's check:** borderless transparent window with the rounded
+     frame; custom title bar (pin = always on top, hide to tray — inactive until stage 6,
+     minimize, close = quit); drag by the title bar, resize by the edges; compact mode
+     (double-click the title bar; expand button or double-click the strip to return);
+     default local keymap as a table in `crates/cm-app/src/keymap.rs` (physical keys, so
+     any layout works; ignored while a text field has focus); mouse wheel tempo,
+     Ctrl+wheel volume. Keys 6–8 select 6, 7, 8 beats.
 5. Settings and data: options window (Sound, Volume, Interface, Hotkeys, Audio), own
    samples, per-slot volume, pan, fade-in, boost, device choice, profile storage,
    meter constructor, presets.

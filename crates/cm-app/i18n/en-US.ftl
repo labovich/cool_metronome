@@ -3,6 +3,16 @@
 
 app-title = Cool Metronome
 
+## Window
+
+window-pin = Keep on top
+window-tray = Hide to tray
+window-tray-later = Hiding to the tray arrives in a later version.
+window-minimize = Minimize
+window-close = Close
+window-expand = Expand to full window
+window-compact-hint = Double-click for compact mode
+
 ## Tempo
 
 # Shown under the big BPM number: "BPM · Allegro · 1:23".
