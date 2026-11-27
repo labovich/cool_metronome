@@ -9,7 +9,8 @@ UI mockup source (exact sizes, colors, layout): `docs/design/` (see its README).
 - Reply in **Russian**. Code, comments, commit messages and UI strings in English.
 - The owner develops on Windows 10/11 x64 (PowerShell). macOS testing on an Intel Mac mini.
 - Before starting a stage, say what it will contain and wait for "go".
-- Do not commit or push unless asked.
+- Commit after every significant change (a feature, a fix, a stage part) so the history
+  tracks the work; run fmt, clippy and tests first. Do not push unless asked.
 
 ## Commands
 
