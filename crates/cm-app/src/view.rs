@@ -568,8 +568,12 @@ impl View<'_> {
         } else if bar.drag_started() {
             action = Some(WindowAction::Drag);
         }
-        let hint = self.i18n.tr("window-compact-hint");
-        bar.on_hover_text_at_pointer(hint);
+        // The hint is for the empty part of the bar, not for its buttons.
+        let buttons_left = rect.right() - 4.0 - 4.0 * (32.0 + 2.0);
+        if bar.hover_pos().is_some_and(|p| p.x < buttons_left) {
+            let hint = self.i18n.tr("window-compact-hint");
+            bar.on_hover_text_at_pointer(hint);
+        }
 
         let painter = ui.painter();
         let cy = rect.center().y;

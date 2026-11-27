@@ -1,9 +1,10 @@
 //! The eframe application: state, window chrome, keyboard and wheel,
-//! housekeeping, repaint scheduling, zoom.
+//! settings, housekeeping, repaint scheduling, zoom.
 
 use crate::i18n::I18n;
 use crate::keymap::{self, Action, Wheel};
 use crate::player::Player;
+use crate::settings::{MetronomeState, Settings, Store, WindowState};
 use crate::theme::{self, Palette};
 use crate::view::{TITLE_H, TempoEdit, View, WindowAction};
 use cm_core::{Meter, Rhythm};
@@ -18,7 +19,7 @@ pub const DEFAULT_SIZE: Vec2 = vec2(440.0, 320.0);
 /// Smallest full window.
 pub const MIN_SIZE: Vec2 = vec2(380.0, 280.0);
 /// The compact strip.
-const COMPACT_SIZE: Vec2 = vec2(440.0, 96.0);
+pub const COMPACT_SIZE: Vec2 = vec2(440.0, 96.0);
 /// Window corner radius and resize grip width.
 const RADIUS: f32 = 10.0;
 const GRIP: f32 = 5.0;
@@ -41,35 +42,81 @@ pub struct MetronomeApp {
     pinned: bool,
     /// Full window size to restore when leaving compact mode.
     full_size: Option<Vec2>,
+    store: Store,
+    /// Last good window position and full size (kept while minimized).
+    placement: WindowState,
 }
 
 impl MetronomeApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    /// `settings` were loaded by `store`; the window was already created
+    /// with their size, position, level and compact size (see `main`).
+    pub fn new(cc: &eframe::CreationContext<'_>, store: Store, settings: &Settings) -> Self {
         let ctx = cc.egui_ctx.clone();
         theme::install_fonts(&ctx);
         theme::install_visuals(&ctx);
         // Own zoom shortcuts (limited range; Ctrl+0 is reserved for subdivisions).
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        ctx.set_zoom_factor(settings.window.zoom.clamp(ZOOM_MIN, ZOOM_MAX));
+        let m = &settings.metronome;
         let waker = cm_audio::Waker::new(move || ctx.request_repaint());
         Self {
-            player: Player::new(waker),
+            player: Player::new(waker, m.tempo(), m.meter(), m.subdivision(), m.volume()),
             i18n: I18n::english(),
             rhythms: Rhythm::builtin(),
             tempo_edit: None,
             wheel: Wheel::default(),
-            compact: false,
-            pinned: false,
-            full_size: None,
+            compact: settings.window.compact,
+            pinned: settings.window.pinned,
+            full_size: settings.window.size(MIN_SIZE.into()).map(Vec2::from),
+            store,
+            placement: settings.window.clone(),
+        }
+    }
+
+    /// The settings as they are now.
+    fn snapshot(&mut self, ctx: &egui::Context) -> Settings {
+        // Window geometry is only trusted while the window is shown normally.
+        let (minimized, inner, outer) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.minimized == Some(true), v.inner_rect, v.outer_rect)
+        });
+        if !minimized {
+            if let Some(outer) = outer {
+                self.placement.position = Some(outer.min.into());
+            }
+            let full = if self.compact {
+                self.full_size
+            } else {
+                inner.map(|r| r.size())
+            };
+            if let Some(size) = full {
+                self.placement.size = Some(size.into());
+            }
+        }
+        let p = &self.player;
+        Settings {
+            metronome: MetronomeState::new(p.tempo(), p.meter(), p.subdivision(), p.volume()),
+            window: WindowState {
+                compact: self.compact,
+                pinned: self.pinned,
+                zoom: ctx.zoom_factor(),
+                ..self.placement.clone()
+            },
+            ..Settings::default()
         }
     }
 
     /// Asks for the next frame only when something will change by itself.
     fn schedule_repaint(&self, ctx: &egui::Context) {
         let now = Instant::now();
-        let next = [self.player.next_tick(), self.player.next_visual_change(now)]
-            .into_iter()
-            .flatten()
-            .min();
+        let next = [
+            self.player.next_tick(),
+            self.player.next_visual_change(now),
+            self.store.next_due(now),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         if let Some(after) = next {
             ctx.request_repaint_after(after);
         }
@@ -159,7 +206,16 @@ impl eframe::App for MetronomeApp {
     /// (then `ui` is skipped), so the audio housekeeping never stalls.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.player.tick();
+        let now = Instant::now();
+        let settings = self.snapshot(ctx);
+        self.store.update(settings, now);
+        self.store.save_if_due(now);
         self.schedule_repaint(ctx);
+    }
+
+    /// Writes changes that are still waiting for the save delay.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.store.flush();
     }
 
     /// The window is transparent outside its rounded frame.

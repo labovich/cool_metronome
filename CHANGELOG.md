@@ -38,6 +38,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - The beat indicator lights up when the beat is heard, not when it is rendered.
 - Own window frame: rounded borderless window, title bar with keep-on-top, minimize
   and close; drag by the title bar, resize by the edges.
+- Settings are kept in the user profile (`settings.toml`): tempo, meter,
+  subdivision, volume, window size and position, compact mode, keep on top, zoom.
 - Compact mode (440×96): double-click the title bar; expand button or a
   double-click on the strip returns to the full window.
 - Keyboard: Space play/stop, ←/→ ±1 BPM (Shift ±0.1), PgUp/PgDn and Ctrl+←/→ ±6,
@@ -52,4 +54,5 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Every push to `master` publishes a "Development build" pre-release (tag `dev`)
   with the Windows zip and the macOS dmg; tagged versions still get regular
   releases. Release archives now include the Inter font license.
+- The title bar hint no longer shows over the title bar buttons.
 - Playing used ~20 % of a CPU core for UI repaints; now ~2.5 %.

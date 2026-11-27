@@ -564,6 +564,8 @@ dependencies = [
  "eframe",
  "egui",
  "fluent-bundle",
+ "serde",
+ "toml",
  "unic-langid",
 ]
 

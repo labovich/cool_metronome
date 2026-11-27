@@ -48,21 +48,28 @@ impl Player {
     /// Volume range of the master slider above mute.
     const VOLUME_RANGE_DB: f32 = 40.0;
 
-    /// `waker` must make the owner call [`Player::tick`] soon; it is called
-    /// from another thread when the audio device fails.
-    pub fn new(waker: Waker) -> Self {
+    /// Starts stopped with the given settings. `waker` must make the owner
+    /// call [`Player::tick`] soon; it is called from another thread when the
+    /// audio device fails.
+    pub fn new(
+        waker: Waker,
+        tempo: Tempo,
+        meter: Meter,
+        subdivision: Subdivision,
+        volume: f32,
+    ) -> Self {
         let mut p = Self {
             audio: None,
             waker,
             error: None,
             last_attempt: None,
             cleanup_after: None,
-            tempo: Tempo::DEFAULT,
-            meter: Meter::default(),
-            subdivision: Subdivision::None,
+            tempo,
+            meter,
+            subdivision,
             bell: true,
             playing: false,
-            volume: 1.0,
+            volume: volume.clamp(0.0, 1.0),
             tap: TapTempo::new(false),
             tap_epoch: Instant::now(),
             elapsed_stopped: Duration::ZERO,

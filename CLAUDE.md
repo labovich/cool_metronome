@@ -39,4 +39,4 @@ Run fmt, clippy and tests before handing work back.
 ## Current state
 
 Stages 1–4 done (see `docs/PLAN.md` → Stages): `cm-app` shows the UI per the mockup with
-its own title bar, compact mode and keyboard control. Next: owner checks 4b, then stage 5.
+its own title bar, compact mode and keyboard control. Stage 5a (settings file) done. Next: 5b (options window).

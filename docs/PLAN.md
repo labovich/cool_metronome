@@ -158,7 +158,16 @@ the period in f32 makes them fail.
      default local keymap as a table in `crates/cm-app/src/keymap.rs` (physical keys, so
      any layout works; ignored while a text field has focus); mouse wheel tempo,
      Ctrl+wheel volume. Keys 6–8 select 6, 7, 8 beats.
-5. Settings and data: options window (Sound, Volume, Interface, Hotkeys, Audio), own
+5. Settings and data, in four parts:
+   - **5a, done:** `settings.toml` in the profile (schema version, unknown fields ignored,
+     unreadable file kept as `.bak`, atomic write 1 s after the last change and on exit):
+     tempo, meter, subdivision, volume, window size/position, compact, pinned, zoom.
+   - 5b: options window (separate OS window): Interface, Audio, Volume, Sound tabs.
+   - 5c: engine for the new options (fade-in, boost, accent mix, own samples decoded with
+     hound / claxon / lewton / nanomp3, device and buffer choice).
+   - 5d: meter constructor and presets.
+
+   Original scope: options window (Sound, Volume, Interface, Hotkeys, Audio), own
    samples, per-slot volume, pan, fade-in, boost, device choice, profile storage,
    meter constructor, presets.
 6. System integration: tray, always-on-top, beat flasher window, local + global hotkeys

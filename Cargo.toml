@@ -40,9 +40,9 @@ egui = "0.37"
 fluent-bundle = "0.16"
 unic-langid = "0.9"
 
-# Data files (rhythm library now, settings later). Parse-only TOML for now.
+# Data files: rhythm library, user settings.
 serde = { version = "1", features = ["derive"] }
-toml = { version = "1", default-features = false, features = ["std", "serde", "parse"] }
+toml = { version = "1", default-features = false, features = ["std", "serde", "parse", "display"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

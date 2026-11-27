@@ -20,6 +20,8 @@ cm-audio.workspace = true
 eframe.workspace = true
 egui.workspace = true
 fluent-bundle.workspace = true
+serde.workspace = true
+toml.workspace = true
 unic-langid.workspace = true
 
 [lints]
