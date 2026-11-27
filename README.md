@@ -2,7 +2,7 @@
 
 A precise, lightweight, open-source metronome for Windows and macOS, written in Rust.
 
-> **Status:** early development (stage 1 of 8, project skeleton). Not usable yet.
+> **Status:** early development (stage 2 of 8: audio engine with a temporary test screen).
 
 ## Goals
 

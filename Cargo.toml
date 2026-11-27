@@ -19,6 +19,12 @@ authors = ["Cool Metronome contributors"]
 
 [workspace.dependencies]
 cm-core = { path = "crates/cm-core" }
+cm-engine = { path = "crates/cm-engine" }
+cm-audio = { path = "crates/cm-audio" }
+
+# Audio output and the lock-free queue between UI and audio threads.
+cpal = "0.18"
+rtrb = "0.3"
 
 # GUI: glow (OpenGL) backend instead of the default wgpu — smaller binary, less RAM.
 eframe = { version = "0.37", default-features = false, features = [

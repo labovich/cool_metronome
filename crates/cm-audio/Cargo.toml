@@ -10,6 +10,10 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+cm-core.workspace = true
+cm-engine.workspace = true
+cpal.workspace = true
+rtrb.workspace = true
 
 [lints]
 workspace = true
