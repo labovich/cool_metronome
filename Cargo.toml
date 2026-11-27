@@ -24,7 +24,7 @@ cm-audio = { path = "crates/cm-audio" }
 
 # Audio output and the lock-free queue between UI and audio threads.
 cpal = "0.18"
-rtrb = "0.3"
+rtrb = "0.4"
 
 # GUI: glow (OpenGL) backend instead of the default wgpu — smaller binary, less RAM.
 # No egui default fonts: the app embeds a small Inter subset instead.
