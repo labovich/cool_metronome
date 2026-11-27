@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/cm-core",
+    "crates/cm-engine",
+    "crates/cm-audio",
+    "crates/cm-export",
+    "crates/cm-app",
+    "crates/cm-probe",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/OWNER/cool-metronome"
+authors = ["Cool Metronome contributors"]
+
+[workspace.dependencies]
+cm-core = { path = "crates/cm-core" }
+
+# GUI: glow (OpenGL) backend instead of the default wgpu — smaller binary, less RAM.
+eframe = { version = "0.36", default-features = false, features = [
+    "glow",
+    "accesskit",
+    "default_fonts",
+    "wayland",
+    "x11",
+] }
+egui = "0.36"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+float_cmp = "warn"
+cast_possible_truncation = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Fast UI iteration in debug builds, still reasonably optimized dependencies.
+[profile.dev.package."*"]
+opt-level = 2

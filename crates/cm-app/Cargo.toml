@@ -1,0 +1,22 @@
+[package]
+name = "cm-app"
+description = "Cool Metronome: a precise, lightweight metronome."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "cool-metronome"
+path = "src/main.rs"
+
+[dependencies]
+cm-core.workspace = true
+eframe.workspace = true
+egui.workspace = true
+
+[lints]
+workspace = true

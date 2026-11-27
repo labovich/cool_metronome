@@ -1,0 +1,15 @@
+[package]
+name = "cm-export"
+description = "Cool Metronome: export of the click track to WAV, FLAC and OGG."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true
