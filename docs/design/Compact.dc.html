@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cool Metronome — compact mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif}
+button{cursor:pointer;font:inherit;border:0;padding:0}
+a{color:#FF8A3D}a:hover{color:#FFB27D}
+</style>
+</helmet>
+<div style="width: 440px; height: 96px; box-sizing: border-box; background: #16171B; color: #F1F1F4; font-family: Inter, system-ui, sans-serif; border: 1px solid #30333B; border-radius: 10px; overflow: hidden; display: flex; align-items: center; gap: 14px; padding: 0 6px 0 14px">
+  <div style="display: flex; align-items: center; gap: 6px">
+    <button aria-label="Slower" onClick="{{dec}}" style="width: 32px; height: 32px; border-radius: 16px; background: #25272E; color: #F1F1F4; display: flex; align-items: center; justify-content: center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+    </button>
+    <div style="width: 76px; display: flex; flex-direction: column; align-items: center">
+      <span style="font-size: 34px; line-height: 36px; font-weight: 650; letter-spacing: -1px; font-variant-numeric: tabular-nums">{{bpm}}</span>
+      <span style="font-size: 11px; font-weight: 500; color: #A3A5AD; letter-spacing: 0.4px">BPM · {{meter}}</span>
+    </div>
+    <button aria-label="Faster" onClick="{{inc}}" style="width: 32px; height: 32px; border-radius: 16px; background: #25272E; color: #F1F1F4; display: flex; align-items: center; justify-content: center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    </button>
+  </div>
+  <div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 8px">
+    <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+      <span aria-hidden="true" style="{{b.style}}"></span>
+    </sc-for>
+  </div>
+  <button onClick="{{togglePlay}}" aria-label="{{playLabel}}" style="width: 48px; height: 48px; border-radius: 24px; background: #FF8A3D; color: #1A1205; display: flex; align-items: center; justify-content: center; flex: none">
+    <sc-if value="{{playing}}" hint-placeholder-val="{{ false }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+    </sc-if>
+    <sc-if value="{{notPlaying}}" hint-placeholder-val="{{ true }}">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor"/></svg>
+    </sc-if>
+  </button>
+  <div style="display: flex; flex-direction: column; gap: 4px; flex: none">
+    <button aria-label="Expand to full window" style="width: 30px; height: 30px; border-radius: 6px; background: transparent; color: #A3A5AD; display: flex; align-items: center; justify-content: center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></svg>
+    </button>
+    <button aria-label="Close" style="width: 30px; height: 30px; border-radius: 6px; background: transparent; color: #A3A5AD; display: flex; align-items: center; justify-content: center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":96}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { bpm: 88, playing: false, current: -1 };
+    this.levels = [2, 1, 1, 1];
+  }
+  componentWillUnmount() { if (this.timer) clearTimeout(this.timer); }
+  tick() {
+    this.setState((s) => ({ current: (s.current + 1) % this.levels.length }));
+    this.timer = setTimeout(() => this.tick(), 60000 / this.state.bpm);
+  }
+  renderVals() {
+    const s = this.state;
+    const setBpm = (v) => this.setState({ bpm: Math.min(999, Math.max(1, v)) });
+    const beats = this.levels.map((l, i) => {
+      const on = s.playing && s.current === i;
+      const size = l === 2 ? 18 : 14;
+      const fill = l === 2 ? '#FF8A3D' : '#C9CBD2';
+      return { style: 'display: block; width: ' + size + 'px; height: ' + size + 'px; border-radius: 50%; background: ' + fill + '; opacity: ' + (s.playing && !on ? 0.45 : 1) + '; transform: scale(' + (on ? 1.2 : 1) + '); transition: transform 60ms, opacity 60ms' };
+    });
+    return {
+      bpm: s.bpm, meter: '4/4', beats,
+      playing: s.playing, notPlaying: !s.playing,
+      playLabel: s.playing ? 'Stop' : 'Play',
+      dec: () => setBpm(s.bpm - 1),
+      inc: () => setBpm(s.bpm + 1),
+      togglePlay: () => {
+        if (s.playing) { clearTimeout(this.timer); this.setState({ playing: false, current: -1 }); }
+        else { this.setState({ playing: true, current: -1 }, () => this.tick()); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

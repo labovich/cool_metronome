@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cool Metronome — main window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif}
+button{cursor:pointer;font:inherit;border:0;padding:0}
+a{color:#FF8A3D}a:hover{color:#FFB27D}
+input[type=range]{margin:0}
+</style>
+</helmet>
+<div style="width: 440px; height: 320px; box-sizing: border-box; background: {{t.bg}}; color: {{t.text}}; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; border: 1px solid {{t.border}}; border-radius: 10px; overflow: hidden">
+  <div style="height: 36px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 14px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5L9 3z"/><path d="M12 15l5-9"/></svg>
+      <span style="font-size: 13px; font-weight: 600; color: {{t.text2}}">Cool Metronome</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 2px">
+      <button aria-label="Keep on top" aria-pressed="{{pinned}}" onClick="{{togglePin}}" style="width: 32px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: {{pinBg}}; color: {{pinColor}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l-1 7 4 3H6l4-3-1-7z"/><path d="M12 13v8"/></svg>
+      </button>
+      <button aria-label="Hide to tray" style="width: 32px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: transparent; color: {{t.text2}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v4h16v-4"/></svg>
+      </button>
+      <button aria-label="Minimize" style="width: 32px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: transparent; color: {{t.text2}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+      </button>
+      <button aria-label="Close" style="width: 32px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: transparent; color: {{t.text2}}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 6px 20px 18px">
+    <div style="display: flex; justify-content: center; align-items: center; gap: 10px; height: 34px">
+      <sc-for list="{{beats}}" as="b" hint-placeholder-count="4">
+        <button aria-label="{{b.label}}" onClick="{{b.cycle}}" style="{{b.style}}"></button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <button aria-label="Slower" onClick="{{dec}}" style="width: 44px; height: 44px; border-radius: 22px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+      </button>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 2px">
+        <div style="display: flex; align-items: baseline; gap: 6px">
+          <span style="font-size: 64px; line-height: 64px; font-weight: 650; letter-spacing: -2px; font-variant-numeric: tabular-nums">{{bpmInt}}</span>
+          <span style="font-size: 20px; font-weight: 600; color: {{t.text2}}; font-variant-numeric: tabular-nums">{{bpmFrac}}</span>
+        </div>
+        <span style="font-size: 12px; font-weight: 500; color: {{t.text2}}; letter-spacing: 0.4px">BPM · {{tempoName}} · {{elapsed}}</span>
+      </div>
+      <button aria-label="Faster" onClick="{{inc}}" style="width: 44px; height: 44px; border-radius: 22px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      </button>
+    </div>
+
+    <input type="range" aria-label="Tempo" min="40" max="208" step="1" value="{{bpm}}" onChange="{{slide}}" style="width: 100%; accent-color: {{accent}}">
+
+    <div style="display: flex; align-items: center; gap: 6px">
+      <button onClick="{{nextMeter}}" aria-label="Meter" style="height: 36px; padding: 0 10px; border-radius: 8px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600">{{meterLabel}}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button onClick="{{nextSub}}" aria-label="Subdivision" style="height: 36px; padding: 0 10px; border-radius: 8px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500">{{subLabel}}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button aria-label="Presets" style="height: 36px; width: 36px; border-radius: 8px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z"/></svg>
+      </button>
+      <button aria-label="Volume" style="height: 36px; width: 36px; border-radius: 8px; background: {{t.surface}}; color: {{t.text}}; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4 4 0 010 6"/></svg>
+      </button>
+      <div style="flex: 1"></div>
+      <button onClick="{{tap}}" aria-label="Tap tempo" style="height: 44px; padding: 0 14px; border-radius: 22px; background: transparent; border: 1.5px solid {{t.border2}}; color: {{t.text}}; font-size: 13px; font-weight: 700; letter-spacing: 1px">TAP</button>
+      <button onClick="{{togglePlay}}" aria-label="{{playLabel}}" style="width: 52px; height: 52px; border-radius: 26px; background: {{accent}}; color: #1A1205; display: flex; align-items: center; justify-content: center">
+        <sc-if value="{{playing}}" hint-placeholder-val="{{ false }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+        </sc-if>
+        <sc-if value="{{notPlaying}}" hint-placeholder-val="{{ true }}">
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor"/></svg>
+        </sc-if>
+      </button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"accent":{"editor":"color","default":"#FF8A3D","options":["#FF8A3D","#4C9AFF","#3DD68C","#B98CFF"]},"$preview":{"width":440,"height":320}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { bpm: 120, playing: false, current: -1, secs: 0, pinned: true, meter: 0, sub: 0, levels: null, taps: [] };
+    this.meters = [
+      { label: '4/4', beats: [2, 1, 1, 1] },
+      { label: '3/4', beats: [2, 1, 1] },
+      { label: '3+2', beats: [2, 1, 1, 2, 1] },
+      { label: '6/8', beats: [2, 1, 1, 2, 1, 1] },
+      { label: '2/4', beats: [2, 1] }
+    ];
+    this.subs = ['No subdiv', '♪♪ Duple', '3 Triplet', '♬ Quad', 'Shuffle'];
+  }
+  componentWillUnmount() { this.stop(); }
+  stop() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
+  tick() {
+    const n = this.levels().length;
+    this.setState((s) => ({ current: (s.current + 1) % n, secs: s.secs + 60 / s.bpm }));
+    this.timer = setTimeout(() => this.tick(), 60000 / this.state.bpm);
+  }
+  levels() { return this.state.levels || this.meters[this.state.meter].beats; }
+  tempoName(b) {
+    if (b < 60) return 'Largo';
+    if (b < 66) return 'Larghetto';
+    if (b < 76) return 'Adagio';
+    if (b < 108) return 'Andante';
+    if (b < 120) return 'Moderato';
+    if (b < 168) return 'Allegro';
+    if (b < 200) return 'Presto';
+    return 'Prestissimo';
+  }
+  renderVals() {
+    const dark = this.props.dark ?? true;
+    const accent = this.props.accent ?? '#FF8A3D';
+    const t = dark
+      ? { bg: '#16171B', surface: '#25272E', border: '#30333B', border2: '#4A4E58', text: '#F1F1F4', text2: '#A3A5AD', beat: '#C9CBD2', ring: '#16171B' }
+      : { bg: '#FAFAFB', surface: '#ECEDF0', border: '#DADCE1', border2: '#B9BCC4', text: '#18191D', text2: '#585B63', beat: '#6B6F78', ring: '#FAFAFB' };
+    const s = this.state;
+    const clamp = (v) => Math.min(999, Math.max(1, Math.round(v * 10) / 10));
+    const setBpm = (v) => this.setState({ bpm: clamp(v) });
+    const lv = this.levels();
+    const beats = lv.map((l, i) => {
+      const on = s.playing && s.current === i;
+      const size = l === 2 ? 30 : 24;
+      const fill = l === 2 ? accent : l === 1 ? t.beat : 'transparent';
+      const border = l === 0 ? '2px solid ' + t.border2 : '0';
+      const glow = on ? '0 0 0 3px ' + t.ring + ', 0 0 0 6px ' + (l === 2 ? accent : t.beat) : 'none';
+      return {
+        label: 'Beat ' + (i + 1) + ': ' + (l === 2 ? 'accent' : l === 1 ? 'normal' : 'muted'),
+        style: 'width: ' + size + 'px; height: ' + size + 'px; border-radius: 50%; box-sizing: border-box; background: ' + fill + '; border: ' + border + '; box-shadow: ' + glow + '; transform: scale(' + (on ? 1.12 : 1) + '); transition: transform 60ms, box-shadow 60ms',
+        cycle: () => { const next = lv.slice(); next[i] = l === 1 ? 2 : l === 2 ? 0 : 1; this.setState({ levels: next }); }
+      };
+    });
+    const whole = Math.floor(s.bpm);
+    const frac = Math.round((s.bpm - whole) * 10);
+    const m = Math.floor(s.secs / 60), sec = Math.floor(s.secs % 60);
+    return {
+      t, accent, beats,
+      bpm: s.bpm,
+      bpmInt: String(whole),
+      bpmFrac: '.' + frac,
+      tempoName: this.tempoName(s.bpm),
+      elapsed: m + ':' + (sec < 10 ? '0' : '') + sec,
+      playing: s.playing, notPlaying: !s.playing,
+      playLabel: s.playing ? 'Stop' : 'Play',
+      pinned: s.pinned ? 'true' : 'false',
+      pinBg: s.pinned ? (dark ? '#3A2A1E' : '#FDE7D6') : 'transparent',
+      pinColor: s.pinned ? accent : t.text2,
+      meterLabel: this.meters[s.meter].label,
+      subLabel: this.subs[s.sub],
+      togglePin: () => this.setState({ pinned: !s.pinned }),
+      dec: () => setBpm(s.bpm - 1),
+      inc: () => setBpm(s.bpm + 1),
+      slide: (e) => setBpm(Number(e.target.value)),
+      nextMeter: () => this.setState({ meter: (s.meter + 1) % this.meters.length, levels: null, current: -1 }),
+      nextSub: () => this.setState({ sub: (s.sub + 1) % this.subs.length }),
+      tap: () => {
+        const now = Date.now();
+        const taps = s.taps.filter((x) => now - x < 2500).concat(now).slice(-6);
+        if (taps.length > 1) {
+          const avg = (taps[taps.length - 1] - taps[0]) / (taps.length - 1);
+          this.setState({ taps, bpm: clamp(60000 / avg) });
+        } else { this.setState({ taps }); }
+      },
+      togglePlay: () => {
+        if (s.playing) { this.stop(); this.setState({ playing: false, current: -1 }); }
+        else { this.setState({ playing: true, current: -1, secs: 0 }, () => this.tick()); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
