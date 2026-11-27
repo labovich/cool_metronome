@@ -2,7 +2,8 @@
 
 A precise, lightweight, open-source metronome for Windows and macOS, written in Rust.
 
-> **Status:** early development (stage 2 of 8: audio engine with a temporary test screen).
+> **Status:** early development (stage 4 of 8: main window done; title bar, compact mode
+> and keyboard control next).
 
 ## Goals
 
@@ -22,6 +23,19 @@ A precise, lightweight, open-source metronome for Windows and macOS, written in 
 | Windows 10 and later, x64 | Primary target |
 | macOS 10.15 and later, Intel and Apple Silicon (universal) | Built and released; manual testing on Intel only |
 | Linux | Planned |
+
+## Download
+
+- **Development build** — the latest commit on `master`, rebuilt on every push:
+  [Releases → Development build](https://github.com/labovich/cool_metronome/releases/tag/dev)
+  - Windows x64: [CoolMetronome-dev-windows-x64.zip](https://github.com/labovich/cool_metronome/releases/download/dev/CoolMetronome-dev-windows-x64.zip)
+  - macOS (Intel and Apple Silicon): [CoolMetronome-dev-macos-universal.dmg](https://github.com/labovich/cool_metronome/releases/download/dev/CoolMetronome-dev-macos-universal.dmg)
+- **Versions** — tagged releases on the [Releases](https://github.com/labovich/cool_metronome/releases) page
+  (none yet).
+
+On Windows, unzip and run `CoolMetronome.exe`; nothing is installed. On macOS, open the
+`.dmg` and drag the app to *Applications*. The builds are not code-signed yet, see
+[Installing unsigned builds](#installing-unsigned-builds).
 
 ## Building from source
 

@@ -41,4 +41,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Audio housekeeping (freeing replaced objects, recovering a lost device) now
   also runs while the window is minimized or the metronome is idle.
 - CI runs on pushes to `master`.
+- Every push to `master` publishes a "Development build" pre-release (tag `dev`)
+  with the Windows zip and the macOS dmg; tagged versions still get regular
+  releases. Release archives now include the Inter font license.
 - Playing used ~20 % of a CPU core for UI repaints; now ~2.5 %.

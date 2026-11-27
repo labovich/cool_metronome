@@ -128,8 +128,12 @@ the period in f32 makes them fail.
   cargo-deny. `RUSTFLAGS=-D warnings`.
 - `dtolnay/rust-toolchain`: use `@stable`, or `@master` with `toolchain:` input. Never `@1.95`
   — Dependabot "upgrades" it to non-existent Rust versions.
-- `.github/workflows/release.yml` (tag `v*`): Windows zip (Inno Setup installer in stage 8),
-  macOS universal `.app` (ad-hoc signed) in `.dmg`, SHA256SUMS, GitHub Release.
+- `.github/workflows/release.yml`: Windows zip (Inno Setup installer in stage 8), macOS
+  universal `.app` (ad-hoc signed) in `.dmg`, SHA256SUMS; licenses (incl. Inter OFL) inside.
+  - Push to `master`: the rolling pre-release "Development build" (tag `dev`, moved to the
+    pushed commit; files replaced, links stable, never marked Latest). A newer push cancels
+    a running build.
+  - Tag `v*`: a regular GitHub Release (pre-release if the tag contains `-`).
 
 ## Stages
 

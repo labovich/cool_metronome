@@ -1,21 +1,35 @@
 name: Release
 
-# Builds release artifacts when a version tag (v1.2.3) is pushed and publishes
-# them as a GitHub Release. Stage 1 skeleton: Windows ships a zipped .exe for now;
-# the Inno Setup per-user installer arrives in stage 8.
+# Builds the app for Windows and macOS and publishes it on the Releases page.
+#
+# - Push to master: updates the rolling pre-release "Development build" (tag `dev`).
+#   The tag is moved to the pushed commit and the files are replaced, so the
+#   download links stay the same:
+#   https://github.com/<owner>/<repo>/releases/download/dev/CoolMetronome-dev-windows-x64.zip
+# - Version tag (v1.2.3): publishes a regular release (a pre-release if the tag has "-").
+#
+# Windows ships a zipped .exe for now; the Inno Setup per-user installer arrives in stage 8.
 
 on:
   push:
+    branches: [master]
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# A newer push to master supersedes a running development build; tag builds always finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/master' }}
+
 env:
   CARGO_TERM_COLOR: always
   APP_NAME: Cool Metronome
   BIN_NAME: cool-metronome
+  # File name label: the version tag, or "dev" for master builds.
+  LABEL: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
 
 jobs:
   windows:
@@ -30,10 +44,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          $ver = "${{ github.ref_name }}"
           Copy-Item "target/x86_64-pc-windows-msvc/release/$env:BIN_NAME.exe" "dist/CoolMetronome.exe"
           Copy-Item LICENSE-MIT, LICENSE-APACHE, README.md dist/
-          Compress-Archive -Path dist/* -DestinationPath "CoolMetronome-$ver-windows-x64.zip"
+          Copy-Item crates/cm-app/assets/fonts/LICENSE-Inter.txt dist/
+          Compress-Archive -Path dist/* -DestinationPath "CoolMetronome-$env:LABEL-windows-x64.zip"
       - uses: actions/upload-artifact@v7
         with:
           name: windows
@@ -55,13 +69,20 @@ jobs:
       - name: Bundle .app and .dmg (ad-hoc signed)
         run: |
           set -euo pipefail
-          VER="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            # Development build: the workspace version.
+            VER="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          fi
           APP="dist/dmg/${APP_NAME}.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
           lipo -create \
             "target/x86_64-apple-darwin/release/${BIN_NAME}" \
             "target/aarch64-apple-darwin/release/${BIN_NAME}" \
             -output "$APP/Contents/MacOS/${BIN_NAME}"
+          cp LICENSE-MIT LICENSE-APACHE crates/cm-app/assets/fonts/LICENSE-Inter.txt \
+            "$APP/Contents/Resources/"
           cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -73,7 +94,7 @@ jobs:
             <key>CFBundleExecutable</key><string>${BIN_NAME}</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>${VER}</string>
-            <key>CFBundleVersion</key><string>${VER}</string>
+            <key>CFBundleVersion</key><string>${GITHUB_RUN_NUMBER}</string>
             <key>LSMinimumSystemVersion</key><string>10.15</string>
             <key>NSHighResolutionCapable</key><true/>
           </dict>
@@ -82,7 +103,7 @@ jobs:
           codesign --force --deep --sign - "$APP"
           ln -s /Applications dist/dmg/Applications
           hdiutil create -volname "${APP_NAME}" -srcfolder dist/dmg -ov -format UDZO \
-            "CoolMetronome-${GITHUB_REF_NAME}-macos-universal.dmg"
+            "CoolMetronome-${LABEL}-macos-universal.dmg"
       - uses: actions/upload-artifact@v7
         with:
           name: macos
@@ -105,3 +126,49 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  publish-dev:
+    name: Publish development build
+    needs: [windows, macos]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: dev
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS.txt
+      - name: Release notes
+        run: |
+          {
+            echo "Automatic build of the latest commit on \`master\`, for testing."
+            echo "Not a stable release: it is replaced on every push."
+            echo
+            echo "**Commit:** ${GITHUB_SHA::7} ($(git log -1 --format=%cs))"
+            echo
+            echo '```'
+            git log -1 --format=%B
+            echo '```'
+            echo
+            echo "Builds are not code-signed. See README → *Installing unsigned builds*."
+          } > notes.md
+      - name: Move the dev tag to this commit
+        run: |
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$TAG"
+      - name: Create or update the release
+        run: |
+          title="Development build (${GITHUB_SHA::7})"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file notes.md \
+              --prerelease --latest=false
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" artifacts/* --title "$title" --notes-file notes.md \
+              --prerelease --latest=false
+          fi
