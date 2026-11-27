@@ -146,6 +146,18 @@ pub struct AudioSettings {
     /// Output device name; `None` is the system default. When the device is
     /// missing, the system default plays instead.
     pub device: Option<String>,
+    /// Buffer size in frames; `None` is the device default.
+    pub buffer: Option<u32>,
+}
+
+impl AudioSettings {
+    /// Buffer sizes offered in the options.
+    pub const BUFFERS: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
+
+    /// The buffer size, if it is a sensible one.
+    pub fn buffer(&self) -> Option<u32> {
+        self.buffer.filter(|n| (16..=8192).contains(n))
+    }
 }
 
 /// Options → Volume.
@@ -501,6 +513,7 @@ mod tests {
             },
             audio: AudioSettings {
                 device: Some("Speakers".into()),
+                buffer: Some(256),
             },
             volume: VolumeSettings {
                 sub_db: -20.0,

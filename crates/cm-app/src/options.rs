@@ -139,6 +139,33 @@ impl OptionsWindow {
                 });
                 ui.end_row();
 
+                ui.label(i18n.tr("options-buffer"));
+                ui.horizontal(|ui| {
+                    let default = i18n.tr("options-buffer-default");
+                    let label = |n: Option<u32>| match n {
+                        None => default.clone(),
+                        Some(n) => format!("{n}"),
+                    };
+                    ComboBox::from_id_salt("buffer")
+                        .selected_text(label(audio.buffer()))
+                        .width(120.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut audio.buffer, None, label(None));
+                            for n in AudioSettings::BUFFERS {
+                                ui.selectable_value(&mut audio.buffer, Some(n), label(Some(n)));
+                            }
+                        });
+                    if let Some((frames, rate)) = player.block() {
+                        let ms = f64::from(frames) * 1000.0 / f64::from(rate);
+                        let text = i18n.tr_args(
+                            "options-buffer-now",
+                            &[("frames", frames.into()), ("ms", format!("{ms:.1}").into())],
+                        );
+                        ui.label(RichText::new(text).color(p.text2));
+                    }
+                });
+                ui.end_row();
+
                 ui.label(i18n.tr("options-now-playing"));
                 match player.output_info() {
                     Some(info) => ui
@@ -150,6 +177,14 @@ impl OptionsWindow {
                 };
                 ui.end_row();
             });
+        let refused = audio
+            .buffer()
+            .zip(player.block())
+            .is_some_and(|(asked, (got, _))| asked != got);
+        if refused {
+            ui.add_space(8.0);
+            ui.label(RichText::new(i18n.tr("options-buffer-refused")).color(p.text2));
+        }
         if player.on_fallback() {
             ui.add_space(8.0);
             ui.label(RichText::new(i18n.tr("options-device-missing")).color(theme::ACCENT));

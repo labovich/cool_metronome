@@ -13,7 +13,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
 use std::fmt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// Capacity of the UI → engine command queue.
 const COMMAND_QUEUE: usize = 256;
@@ -98,6 +98,7 @@ pub struct AudioOutput {
     retired: rtrb::Consumer<Retired>,
     status: Arc<EngineStatus>,
     failed: Arc<AtomicBool>,
+    block_frames: Arc<AtomicU32>,
     sample_rate: u32,
     channels: u16,
     device_name: String,
@@ -127,10 +128,14 @@ impl AudioOutput {
     /// The engine is stopped until [`Command::Start`] is sent. `waker` is
     /// called once when the device fails (see [`AudioOutput::has_failed`]).
     ///
+    /// `buffer_frames` asks for a fixed buffer size (clamped to what the
+    /// device reports); if the device refuses it, its default size is used.
+    ///
     /// # Errors
     /// If the device is missing, its format is unsupported or the stream fails.
     pub fn open(
         device: Option<&str>,
+        buffer_frames: Option<u32>,
         setup: EngineSetup,
         waker: Option<Waker>,
     ) -> Result<Self, AudioError> {
@@ -143,13 +148,37 @@ impl AudioOutput {
                 .ok_or_else(|| AudioError::DeviceNotFound(name.to_owned()))?,
             None => host.default_output_device().ok_or(AudioError::NoDevice)?,
         };
-        let device_name = device.to_string();
-
         let supported = device
             .default_output_config()
             .map_err(|e| AudioError::Config(e.to_string()))?;
         let format = supported.sample_format();
+        let range = *supported.buffer_size();
         let config: cpal::StreamConfig = supported.into();
+
+        if let Some(frames) = buffer_frames {
+            let frames = match range {
+                cpal::SupportedBufferSize::Range { min, max } => frames.clamp(min, max),
+                cpal::SupportedBufferSize::Unknown => frames,
+            };
+            let fixed = cpal::StreamConfig {
+                buffer_size: cpal::BufferSize::Fixed(frames),
+                ..config
+            };
+            if let Ok(out) = Self::start(&device, fixed, format, setup.clone(), waker.clone()) {
+                return Ok(out);
+            }
+        }
+        Self::start(&device, config, format, setup, waker)
+    }
+
+    fn start(
+        device: &cpal::Device,
+        config: cpal::StreamConfig,
+        format: SampleFormat,
+        setup: EngineSetup,
+        waker: Option<Waker>,
+    ) -> Result<Self, AudioError> {
+        let device_name = device.to_string();
         let sample_rate: u32 = config.sample_rate;
         let channels: u16 = config.channels;
 
@@ -167,6 +196,7 @@ impl AudioOutput {
         let (commands, command_rx) = rtrb::RingBuffer::new(COMMAND_QUEUE);
         let (retired_tx, retired) = rtrb::RingBuffer::new(RETIRED_QUEUE);
         let failed = Arc::new(AtomicBool::new(false));
+        let block_frames = Arc::new(AtomicU32::new(0));
         let parts = CallbackParts {
             engine,
             commands: command_rx,
@@ -174,13 +204,14 @@ impl AudioOutput {
             failed: Arc::clone(&failed),
             waker,
             status: Arc::clone(&status),
+            block_frames: Arc::clone(&block_frames),
         };
 
         let stream = match format {
-            SampleFormat::F32 => build::<f32>(&device, config, parts),
-            SampleFormat::I16 => build::<i16>(&device, config, parts),
-            SampleFormat::U16 => build::<u16>(&device, config, parts),
-            SampleFormat::I32 => build::<i32>(&device, config, parts),
+            SampleFormat::F32 => build::<f32>(device, config, parts),
+            SampleFormat::I16 => build::<i16>(device, config, parts),
+            SampleFormat::U16 => build::<u16>(device, config, parts),
+            SampleFormat::I32 => build::<i32>(device, config, parts),
             other => Err(AudioError::UnsupportedFormat(format!("{other:?}"))),
         }?;
         stream
@@ -193,10 +224,20 @@ impl AudioOutput {
             retired,
             status,
             failed,
+            block_frames,
             sample_rate,
             channels,
             device_name,
         })
+    }
+
+    /// Frames the device asked for in its last callback (`None` before the first).
+    #[must_use]
+    pub fn block_frames(&self) -> Option<u32> {
+        match self.block_frames.load(Ordering::Relaxed) {
+            0 => None,
+            n => Some(n),
+        }
     }
 
     /// Sends a command to the engine.
@@ -259,6 +300,7 @@ struct CallbackParts {
     failed: Arc<AtomicBool>,
     waker: Option<Waker>,
     status: Arc<EngineStatus>,
+    block_frames: Arc<AtomicU32>,
 }
 
 fn build<T>(
@@ -277,6 +319,7 @@ where
         failed,
         waker,
         status,
+        block_frames,
     } = parts;
     // Allocated once here, never in the callback.
     let mut scratch = vec![0.0_f32; MAX_BLOCK_FRAMES * channels];
@@ -285,6 +328,8 @@ where
         while let Ok(command) = commands.pop() {
             engine.handle(command);
         }
+        let frames = u32::try_from(data.len() / channels).unwrap_or(u32::MAX);
+        block_frames.store(frames, Ordering::Relaxed);
         // Lets the UI show each beat when it is heard, not when it is rendered.
         let ts = info.timestamp();
         status.set_output_time(engine.clock(), ts.playback.duration_since(ts.callback));

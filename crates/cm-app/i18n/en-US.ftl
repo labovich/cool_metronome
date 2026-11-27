@@ -34,6 +34,11 @@ options-tap-fractional = Fractional result (0.1 BPM)
 options-device = Output device
 options-device-default = System default
 options-refresh = Refresh
+options-buffer = Buffer (frames)
+options-buffer-default = Default
+# The buffer the device actually uses, e.g. "now 480 (10.0 ms)".
+options-buffer-now = now { $frames } ({ $ms } ms)
+options-buffer-refused = The device uses its own buffer size (in shared mode the system chooses it, usually 10 ms).
 options-now-playing = Playing on
 options-no-output = No audio output
 options-device-missing = The chosen device is not available; playing on the system default.

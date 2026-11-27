@@ -100,6 +100,7 @@ impl MetronomeApp {
         p.set_accent_mix(self.volume.accent_mix);
         p.set_tap_fractional(self.interface.tap_fractional);
         p.set_device(self.audio.device.clone());
+        p.set_buffer(self.audio.buffer());
         let theme = self.interface.theme();
         if self.applied_theme != Some(theme) {
             self.applied_theme = Some(theme);

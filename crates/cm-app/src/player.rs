@@ -44,6 +44,8 @@ pub struct Player {
     accent_mix: bool,
     /// Chosen output device; `None` is the system default.
     device: Option<String>,
+    /// Requested buffer size in frames; `None` is the device default.
+    buffer: Option<u32>,
     /// The chosen device is missing and the system default plays instead.
     on_fallback: bool,
     /// Elapsed time shown while stopped (the length of the last run).
@@ -92,6 +94,7 @@ impl Player {
             fade_in: 0.0,
             accent_mix: false,
             device: None,
+            buffer: None,
             on_fallback: false,
             elapsed_stopped: Duration::ZERO,
         };
@@ -143,11 +146,12 @@ impl Player {
             sounds: None,
         };
         let waker = Some(self.waker.clone());
-        let mut result = AudioOutput::open(self.device.as_deref(), setup(), waker.clone());
+        let mut result =
+            AudioOutput::open(self.device.as_deref(), self.buffer, setup(), waker.clone());
         // A missing chosen device: play on the system default instead.
         self.on_fallback = false;
         if matches!(result, Err(AudioError::DeviceNotFound(_))) {
-            result = AudioOutput::open(None, setup(), waker);
+            result = AudioOutput::open(None, self.buffer, setup(), waker);
             self.on_fallback = result.is_ok();
         }
         match result {
@@ -345,6 +349,22 @@ impl Player {
             self.audio = None;
             self.open();
         }
+    }
+
+    /// Asks for a buffer of `frames` (`None`: the device default), reopening
+    /// the output.
+    pub fn set_buffer(&mut self, frames: Option<u32>) {
+        if frames != self.buffer {
+            self.buffer = frames;
+            self.audio = None;
+            self.open();
+        }
+    }
+
+    /// Frames per audio callback of the open output, and the sample rate.
+    pub fn block(&self) -> Option<(u32, u32)> {
+        let audio = self.audio.as_ref()?;
+        Some((audio.block_frames()?, audio.sample_rate()))
     }
 
     /// Tap tempo result to 0.1 BPM instead of whole BPM.
