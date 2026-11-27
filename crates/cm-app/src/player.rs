@@ -2,7 +2,7 @@
 
 use cm_audio::{AudioError, AudioOutput, EngineSetup, Waker};
 use cm_core::{Meter, Rhythm, Subdivision, TapTempo, Tempo};
-use cm_engine::{BarPattern, Command, EngineStatus};
+use cm_engine::{BarPattern, ClickKind, Command, EngineStatus};
 use std::time::{Duration, Instant};
 
 /// Why there is no sound.
@@ -32,6 +32,14 @@ pub struct Player {
     volume: f32,
     tap: TapTempo,
     tap_epoch: Instant,
+    /// Sound slot levels in dB: accent, normal, subdivision, bell.
+    slots_db: [f32; 4],
+    /// Stereo position, −1 … 1.
+    pan: f32,
+    /// Chosen output device; `None` is the system default.
+    device: Option<String>,
+    /// The chosen device is missing and the system default plays instead.
+    on_fallback: bool,
     /// Elapsed time shown while stopped (the length of the last run).
     elapsed_stopped: Duration,
 }
@@ -72,6 +80,10 @@ impl Player {
             volume: volume.clamp(0.0, 1.0),
             tap: TapTempo::new(false),
             tap_epoch: Instant::now(),
+            slots_db: [0.0, -5.0, -15.0, -9.0],
+            pan: 0.0,
+            device: None,
+            on_fallback: false,
             elapsed_stopped: Duration::ZERO,
         };
         p.open();
@@ -115,14 +127,27 @@ impl Player {
 
     fn open(&mut self) {
         self.last_attempt = Some(Instant::now());
-        let setup = EngineSetup {
-            tempo: self.tempo,
-            pattern: self.pattern(),
+        let (tempo, pattern) = (self.tempo, self.pattern());
+        let setup = || EngineSetup {
+            tempo,
+            pattern: pattern.clone(),
             sounds: None,
         };
-        match AudioOutput::open(None, setup, Some(self.waker.clone())) {
+        let waker = Some(self.waker.clone());
+        let mut result = AudioOutput::open(self.device.as_deref(), setup(), waker.clone());
+        // A missing chosen device: play on the system default instead.
+        self.on_fallback = false;
+        if matches!(result, Err(AudioError::DeviceNotFound(_))) {
+            result = AudioOutput::open(None, setup(), waker);
+            self.on_fallback = result.is_ok();
+        }
+        match result {
             Ok(mut audio) => {
                 let _ = audio.send(Command::SetMaster(volume_gain(self.volume)));
+                for (slot, db) in self.slots_db.into_iter().enumerate() {
+                    let _ = audio.send(Command::SetGain(SLOTS[slot], db_gain(db)));
+                }
+                let _ = audio.send(Command::SetPan(self.pan));
                 if self.playing {
                     let _ = audio.send(Command::Start);
                 }
@@ -242,6 +267,62 @@ impl Player {
         }
     }
 
+    /// Level of a sound slot (accent, normal, subdivision, bell) in dB.
+    pub fn set_slot_db(&mut self, slot: usize, db: f32) {
+        if let Some(current) = self.slots_db.get_mut(slot)
+            && (*current - db).abs() > f32::EPSILON
+        {
+            *current = db;
+            self.send(Command::SetGain(SLOTS[slot], db_gain(db)));
+        }
+    }
+
+    pub fn set_pan(&mut self, pan: f32) {
+        if (pan - self.pan).abs() > f32::EPSILON {
+            self.pan = pan;
+            self.send(Command::SetPan(pan));
+        }
+    }
+
+    /// Bell on the bar start in compound meters.
+    pub fn set_bell(&mut self, bell: bool) {
+        if bell != self.bell {
+            self.bell = bell;
+            self.push_pattern();
+        }
+    }
+
+    /// Plays on `device` (`None`: the system default), reopening the output.
+    pub fn set_device(&mut self, device: Option<String>) {
+        if device != self.device {
+            self.device = device;
+            self.audio = None;
+            self.open();
+        }
+    }
+
+    /// Tap tempo result to 0.1 BPM instead of whole BPM.
+    pub fn set_tap_fractional(&mut self, fractional: bool) {
+        self.tap = TapTempo::new(fractional);
+    }
+
+    /// "Device · 48000 Hz · 2 ch" of the open output.
+    pub fn output_info(&self) -> Option<String> {
+        self.audio.as_ref().map(|a| {
+            format!(
+                "{} · {} Hz · {} ch",
+                a.device_name(),
+                a.sample_rate(),
+                a.channels()
+            )
+        })
+    }
+
+    /// The chosen device is missing; the system default plays instead.
+    pub fn on_fallback(&self) -> bool {
+        self.on_fallback
+    }
+
     /// Registers a tap; sets the tempo once two or more taps are in.
     pub fn tap(&mut self, now: Instant) {
         let at = now.duration_since(self.tap_epoch).as_secs_f64();
@@ -319,6 +400,19 @@ impl Player {
     }
 }
 
+/// Engine sound slots in settings order: accent, normal, subdivision, bell.
+const SLOTS: [ClickKind; 4] = [
+    ClickKind::Accent,
+    ClickKind::Normal,
+    ClickKind::Sub,
+    ClickKind::Bell,
+];
+
+/// Decibels → linear gain.
+fn db_gain(db: f32) -> f32 {
+    10f32.powf(db / 20.0)
+}
+
 /// Slider position → linear gain: 0 is silence, then −40 dB … 0 dB.
 fn volume_gain(position: f32) -> f32 {
     if position <= 0.0 {
@@ -331,6 +425,17 @@ fn volume_gain(position: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::volume_gain;
+
+    #[test]
+    fn decibels() {
+        assert!((super::db_gain(0.0) - 1.0).abs() < 1e-6);
+        assert!((super::db_gain(-20.0) - 0.1).abs() < 1e-6);
+        // The engine defaults are the same levels as the settings defaults.
+        let defaults = [0.0, -5.0, -15.0, -9.0].map(super::db_gain);
+        for (a, b) in defaults.iter().zip(cm_engine::Engine::DEFAULT_GAINS) {
+            assert!((a - b).abs() < 1e-3, "{a} vs {b}");
+        }
+    }
 
     #[test]
     fn volume_curve() {

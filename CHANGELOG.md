@@ -40,6 +40,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   and close; drag by the title bar, resize by the edges.
 - Settings are kept in the user profile (`settings.toml`): tempo, meter,
   subdivision, volume, window size and position, compact mode, keep on top, zoom.
+- Options window (key O, or right-click → Options…): theme, tempo slider range,
+  quick jump step in BPM or percent, fractional tap tempo, output device,
+  per-sound volume in dB, pan, bell in compound meters.
 - Compact mode (440×96): double-click the title bar; expand button or a
   double-click on the strip returns to the full window.
 - Keyboard: Space play/stop, ←/→ ±1 BPM (Shift ±0.1), PgUp/PgDn and Ctrl+←/→ ±6,
@@ -55,4 +58,5 @@ and the project uses [Semantic Versioning](https://semver.org/).
   with the Windows zip and the macOS dmg; tagged versions still get regular
   releases. Release archives now include the Inter font license.
 - The title bar hint no longer shows over the title bar buttons.
+- The tempo and volume sliders no longer react to the right mouse button.
 - Playing used ~20 % of a CPU core for UI repaints; now ~2.5 %.

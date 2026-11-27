@@ -24,6 +24,7 @@ pub enum Action {
     /// Meter preset key 1–8 (5 = 3+2).
     Meter(u8),
     Subdivision(Subdivision),
+    OpenOptions,
 }
 
 /// A key with exact modifiers (`ctrl` is Cmd on macOS).
@@ -83,6 +84,7 @@ const VOLUME_COARSE: f32 = 0.2;
 /// The default local keymap (as in the original program).
 pub const DEFAULT_KEYMAP: &[Binding] = &[
     bind(Key::Space, false, false, false, Action::TogglePlay, false),
+    bind(Key::O, false, false, false, Action::OpenOptions, false),
     bind(
         Key::ArrowRight,
         false,
@@ -402,6 +404,19 @@ mod tests {
         );
         assert_eq!(
             act(&key(Key::E, Some(Key::T), Modifiers::NONE, false)),
+            Some(Action::Tap)
+        );
+    }
+
+    #[test]
+    fn letter_shortcuts() {
+        let none = Modifiers::NONE;
+        assert_eq!(
+            act(&key(Key::O, Some(Key::O), none, false)),
+            Some(Action::OpenOptions)
+        );
+        assert_eq!(
+            act(&key(Key::T, Some(Key::T), none, false)),
             Some(Action::Tap)
         );
     }

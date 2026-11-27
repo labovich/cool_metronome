@@ -7,6 +7,7 @@ mod app;
 mod i18n;
 mod icons;
 mod keymap;
+mod options;
 mod player;
 mod settings;
 mod theme;

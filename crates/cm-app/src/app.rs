@@ -3,10 +3,14 @@
 
 use crate::i18n::I18n;
 use crate::keymap::{self, Action, Wheel};
+use crate::options::{Editable, OptionsWindow};
 use crate::player::Player;
-use crate::settings::{MetronomeState, Settings, Store, WindowState};
+use crate::settings::{
+    AudioSettings, InterfaceSettings, MetronomeState, Settings, Store, ThemeChoice, VolumeSettings,
+    WindowState,
+};
 use crate::theme::{self, Palette};
-use crate::view::{TITLE_H, TempoEdit, View, WindowAction};
+use crate::view::{TITLE_H, TempoEdit, View, WindowAction, window_menu};
 use cm_core::{Meter, Rhythm};
 use egui::{
     CursorIcon, Event, Id, Key, Modifiers, Rect, ResizeDirection, Sense, Stroke, StrokeKind, Vec2,
@@ -28,8 +32,6 @@ const GRIP: f32 = 5.0;
 const ZOOM_MIN: f32 = 0.8;
 const ZOOM_MAX: f32 = 2.0;
 const ZOOM_STEP: f32 = 0.1;
-/// Quick jump step of PgUp/PgDn and Ctrl+←/→ (configurable in stage 5).
-const QUICK_JUMP: f64 = 6.0;
 
 #[derive(Debug)]
 pub struct MetronomeApp {
@@ -45,6 +47,12 @@ pub struct MetronomeApp {
     store: Store,
     /// Last good window position and full size (kept while minimized).
     placement: WindowState,
+    interface: InterfaceSettings,
+    audio: AudioSettings,
+    volume: VolumeSettings,
+    options: OptionsWindow,
+    /// The theme last handed to egui.
+    applied_theme: Option<ThemeChoice>,
 }
 
 impl MetronomeApp {
@@ -70,6 +78,29 @@ impl MetronomeApp {
             full_size: settings.window.size(MIN_SIZE.into()).map(Vec2::from),
             store,
             placement: settings.window.clone(),
+            interface: settings.interface.clone(),
+            audio: settings.audio.clone(),
+            volume: settings.volume.clone(),
+            options: OptionsWindow::default(),
+            applied_theme: None,
+        }
+    }
+
+    /// Hands the option values to the player and egui (setters ignore
+    /// unchanged values, so this is cheap every frame).
+    fn apply_options(&mut self, ctx: &egui::Context) {
+        let p = &mut self.player;
+        for (slot, db) in self.volume.slots_db().into_iter().enumerate() {
+            p.set_slot_db(slot, db);
+        }
+        p.set_pan(self.volume.pan());
+        p.set_bell(self.volume.bell);
+        p.set_tap_fractional(self.interface.tap_fractional);
+        p.set_device(self.audio.device.clone());
+        let theme = self.interface.theme();
+        if self.applied_theme != Some(theme) {
+            self.applied_theme = Some(theme);
+            ctx.set_theme(theme.preference());
         }
     }
 
@@ -102,6 +133,9 @@ impl MetronomeApp {
                 zoom: ctx.zoom_factor(),
                 ..self.placement.clone()
             },
+            interface: self.interface.clone(),
+            audio: self.audio.clone(),
+            volume: self.volume.clone(),
             ..Settings::default()
         }
     }
@@ -161,12 +195,13 @@ impl MetronomeApp {
         match action {
             Action::TogglePlay => p.toggle(),
             Action::Tempo(d) => p.set_tempo(p.tempo().offset(d)),
-            Action::TempoJump(n) => p.set_tempo(p.tempo().offset(n * QUICK_JUMP)),
+            Action::TempoJump(n) => p.set_tempo(self.interface.quick_jump(p.tempo(), n)),
             Action::TempoScale(f) => p.set_tempo(p.tempo().scaled(f)),
             Action::Volume(d) => p.set_volume(p.volume() + d),
             Action::Tap => p.tap(now),
             Action::Meter(n) => p.set_meter(meter_for_key(n)),
             Action::Subdivision(s) => p.set_subdivision(s),
+            Action::OpenOptions => self.options.open = true,
         }
     }
 
@@ -175,6 +210,7 @@ impl MetronomeApp {
             WindowAction::Drag => ctx.send_viewport_cmd(ViewportCommand::StartDrag),
             WindowAction::Minimize => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
             WindowAction::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
+            WindowAction::OpenOptions => self.options.open = true,
             WindowAction::TogglePin => {
                 self.pinned = !self.pinned;
                 let level = if self.pinned {
@@ -240,19 +276,25 @@ impl eframe::App for MetronomeApp {
                     Stroke::new(1.0, p.border),
                     StrokeKind::Inside,
                 );
+                // Empty areas of the window: right-click menu.
+                let bg = ui.interact(rect, Id::unique("window-bg"), Sense::click());
+                if window_menu(&bg, &self.i18n) {
+                    action = Some(WindowAction::OpenOptions);
+                }
                 let mut view = View {
                     player: &mut self.player,
                     i18n: &self.i18n,
                     rhythms: &self.rhythms,
                     tempo_edit: &mut self.tempo_edit,
+                    slider_range: self.interface.slider_range(),
                     p,
                     now: Instant::now(),
                 };
                 if self.compact {
-                    action = view.show_compact(ui, rect);
+                    action = view.show_compact(ui, rect).or(action);
                 } else {
                     let (title, content) = rect.split_top_bottom_at_y(rect.top() + TITLE_H);
-                    action = view.title_bar(ui, title, self.pinned);
+                    action = view.title_bar(ui, title, self.pinned).or(action);
                     view.show(ui, content);
                     resize_grips(ui, rect);
                 }
@@ -260,6 +302,18 @@ impl eframe::App for MetronomeApp {
         if let Some(action) = action {
             self.window_action(&ctx, action);
         }
+        self.options.show(
+            &ctx,
+            Editable {
+                interface: &mut self.interface,
+                audio: &mut self.audio,
+                volume: &mut self.volume,
+            },
+            &self.player,
+            &self.i18n,
+            self.pinned,
+        );
+        self.apply_options(&ctx);
         // Commands sent above may need a follow-up tick.
         self.schedule_repaint(&ctx);
     }

@@ -141,7 +141,7 @@ pub fn install_visuals(ctx: &egui::Context) {
         }
         v.widgets.noninteractive.fg_stroke.color = p.text2;
         v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, p.border);
-        v.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+        v.widgets.inactive.weak_bg_fill = p.surface;
         v.widgets.inactive.bg_fill = p.surface;
         v.widgets.hovered.weak_bg_fill = p.surface_hover();
         v.widgets.hovered.bg_fill = p.surface_hover();

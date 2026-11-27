@@ -13,6 +13,41 @@ window-close = Close
 window-expand = Expand to full window
 window-compact-hint = Double-click for compact mode
 
+## Options window
+
+options-open = Options…
+options-title = Options
+options-tab-interface = Interface
+options-tab-audio = Audio
+options-tab-volume = Volume
+options-defaults = Restore defaults
+
+options-theme = Theme
+theme-system = System
+theme-light = Light
+theme-dark = Dark
+options-slider-range = Tempo slider
+options-quick-jump = Quick jump
+options-tap = Tap tempo
+options-tap-fractional = Fractional result (0.1 BPM)
+
+options-device = Output device
+options-device-default = System default
+options-refresh = Refresh
+options-now-playing = Playing on
+options-no-output = No audio output
+options-device-missing = The chosen device is not available; playing on the system default.
+
+options-slot-accent = Accent
+options-slot-normal = Normal beat
+options-slot-sub = Subdivision
+options-slot-bell = Bell
+options-pan = Pan
+options-pan-left = L
+options-pan-right = R
+options-pan-center = Center
+options-bell = Bell on the bar start in compound meters (3+2…)
+
 ## Tempo
 
 # Shown under the big BPM number: "BPM · Allegro · 1:23".
@@ -20,6 +55,7 @@ tempo-subtitle = BPM · { $marking } · { $elapsed }
 tempo-slower = Slower
 tempo-faster = Faster
 tempo-slider = Tempo
+bpm = BPM
 tempo-edit-tooltip = Double-click to type a tempo
 tempo-edit-hint = Enter to apply · Esc to cancel
 tempo-edit-invalid = Type a tempo from 1 to 999 BPM

@@ -162,7 +162,11 @@ the period in f32 makes them fail.
    - **5a, done:** `settings.toml` in the profile (schema version, unknown fields ignored,
      unreadable file kept as `.bak`, atomic write 1 s after the last change and on exit):
      tempo, meter, subdivision, volume, window size/position, compact, pinned, zoom.
-   - 5b: options window (separate OS window): Interface, Audio, Volume, Sound tabs.
+   - **5b, done:** options window (separate OS window; key O or right-click → Options…):
+     Interface (theme, slider range, quick jump in BPM or %, tap integer/fractional),
+     Audio (output device; a missing device falls back to the system default), Volume
+     (per-slot dB, pan, bell in compound meters). All saved in `settings.toml`.
+     The Sound tab, fade-in, +6 dB boost, accent mix and buffer size come with 5c.
    - 5c: engine for the new options (fade-in, boost, accent mix, own samples decoded with
      hound / claxon / lewton / nanomp3, device and buffer choice).
    - 5d: meter constructor and presets.

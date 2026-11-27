@@ -28,9 +28,6 @@ const SLIDER_H: f32 = 20.0;
 const BOTTOM_H: f32 = 52.0;
 const BEAT_GAP: f32 = 10.0;
 const ROW_GAP: f32 = 6.0;
-/// Tempo slider range (configurable within 1–999 in stage 5).
-const SLIDER_MIN: f64 = 40.0;
-const SLIDER_MAX: f64 = 208.0;
 
 /// Longest tempo text that can be typed ("999.9").
 const TEMPO_CHARS: usize = 5;
@@ -66,6 +63,18 @@ pub enum WindowAction {
     TogglePin,
     Minimize,
     Close,
+    OpenOptions,
+}
+
+/// The right-click menu of the window (empty areas, the title bar, the
+/// compact strip). Returns true when "Options…" was chosen.
+pub fn window_menu(resp: &Response, i18n: &I18n) -> bool {
+    let mut open = false;
+    Popup::context_menu(resp).show(|ui| {
+        ui.set_min_width(140.0);
+        open = ui.button(i18n.tr("options-open")).clicked();
+    });
+    open
 }
 
 /// Title bar height (mockup).
@@ -77,6 +86,8 @@ pub struct View<'a> {
     pub i18n: &'a I18n,
     pub rhythms: &'a [Rhythm],
     pub tempo_edit: &'a mut Option<TempoEdit>,
+    /// Tempo slider range in BPM (Options → Interface).
+    pub slider_range: (f64, f64),
     pub p: Palette,
     pub now: Instant,
 }
@@ -332,8 +343,9 @@ impl View<'_> {
     }
 
     fn tempo_slider(&mut self, ui: &mut Ui, rect: Rect) {
+        let (lo, hi) = self.slider_range;
         let bpm = self.player.tempo().bpm();
-        let t = ((bpm - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)).clamp(0.0, 1.0);
+        let t = ((bpm - lo) / (hi - lo)).clamp(0.0, 1.0);
         #[allow(clippy::cast_possible_truncation)]
         let t = t as f32;
         let label = self.i18n.tr("tempo-slider");
@@ -346,7 +358,7 @@ impl View<'_> {
             bpm,
             &self.p,
         ) {
-            let bpm = SLIDER_MIN + f64::from(t) * (SLIDER_MAX - SLIDER_MIN);
+            let bpm = lo + f64::from(t) * (hi - lo);
             self.player.set_tempo(Tempo::from_bpm(bpm.round()));
         }
     }
@@ -568,6 +580,9 @@ impl View<'_> {
         } else if bar.drag_started() {
             action = Some(WindowAction::Drag);
         }
+        if window_menu(&bar, self.i18n) {
+            action = Some(WindowAction::OpenOptions);
+        }
         // The hint is for the empty part of the bar, not for its buttons.
         let buttons_left = rect.right() - 4.0 - 4.0 * (32.0 + 2.0);
         if bar.hover_pos().is_some_and(|p| p.x < buttons_left) {
@@ -640,6 +655,9 @@ impl View<'_> {
             action = Some(WindowAction::ToggleCompact);
         } else if bg.drag_started() {
             action = Some(WindowAction::Drag);
+        }
+        if window_menu(&bg, self.i18n) {
+            action = Some(WindowAction::OpenOptions);
         }
         let cy = rect.center().y;
 
@@ -955,7 +973,9 @@ fn slider(
         .on_hover_cursor(CursorIcon::PointingHand);
     let track = rect.shrink2(vec2(THUMB_R, 0.0));
     let mut new = None;
-    if (resp.dragged() || resp.is_pointer_button_down_on())
+    let primary = ui.input(|i| i.pointer.primary_down());
+    if primary
+        && (resp.dragged() || resp.is_pointer_button_down_on())
         && let Some(pos) = resp.interact_pointer_pos()
     {
         new = Some(((pos.x - track.left()) / track.width()).clamp(0.0, 1.0));

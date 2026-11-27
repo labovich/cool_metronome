@@ -27,6 +27,9 @@ pub struct Settings {
     pub version: u32,
     pub metronome: MetronomeState,
     pub window: WindowState,
+    pub interface: InterfaceSettings,
+    pub audio: AudioSettings,
+    pub volume: VolumeSettings,
 }
 
 impl Default for Settings {
@@ -35,6 +38,164 @@ impl Default for Settings {
             version: SCHEMA_VERSION,
             metronome: MetronomeState::default(),
             window: WindowState::default(),
+            interface: InterfaceSettings::default(),
+            audio: AudioSettings::default(),
+            volume: VolumeSettings::default(),
+        }
+    }
+}
+
+/// Theme choice; stored as text so an unknown value cannot break the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ThemeChoice {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeChoice {
+    pub const ALL: [ThemeChoice; 3] = [Self::System, Self::Light, Self::Dark];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    fn from_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|t| t.id() == id)
+            .unwrap_or_default()
+    }
+
+    pub fn preference(self) -> egui::ThemePreference {
+        match self {
+            Self::System => egui::ThemePreference::System,
+            Self::Light => egui::ThemePreference::Light,
+            Self::Dark => egui::ThemePreference::Dark,
+        }
+    }
+}
+
+/// Options → Interface.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InterfaceSettings {
+    /// `ThemeChoice::id`.
+    pub theme: String,
+    /// Tempo slider range in BPM (within 1–999).
+    pub slider_min: f64,
+    pub slider_max: f64,
+    /// Quick jump (PgUp/PgDn, Ctrl+←/→): BPM, or percent when `quick_jump_percent`.
+    pub quick_jump: f64,
+    pub quick_jump_percent: bool,
+    /// Tap tempo result to 0.1 BPM instead of whole BPM.
+    pub tap_fractional: bool,
+}
+
+impl Default for InterfaceSettings {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::System.id().to_owned(),
+            slider_min: Tempo::SLIDER_DEFAULT_MIN.bpm(),
+            slider_max: Tempo::SLIDER_DEFAULT_MAX.bpm(),
+            quick_jump: 6.0,
+            quick_jump_percent: false,
+            tap_fractional: false,
+        }
+    }
+}
+
+impl InterfaceSettings {
+    pub fn theme(&self) -> ThemeChoice {
+        ThemeChoice::from_id(&self.theme)
+    }
+
+    /// The slider range, made valid: whole BPM, 1 ≤ min < max ≤ 999.
+    pub fn slider_range(&self) -> (f64, f64) {
+        let (lo, hi) = (Tempo::MIN.bpm(), Tempo::MAX.bpm());
+        let fix = |v: f64, d: f64| if v.is_finite() { v.round() } else { d };
+        let min = fix(self.slider_min, 40.0).clamp(lo, hi - 1.0);
+        let max = fix(self.slider_max, 208.0).clamp(min + 1.0, hi);
+        (min, max)
+    }
+
+    /// The tempo after `steps` quick jumps (±1) from `tempo`.
+    pub fn quick_jump(&self, tempo: Tempo, steps: f64) -> Tempo {
+        let step = if self.quick_jump.is_finite() {
+            self.quick_jump.clamp(0.1, 100.0)
+        } else {
+            6.0
+        };
+        if self.quick_jump_percent {
+            tempo.scaled((1.0 + step / 100.0).powf(steps))
+        } else {
+            tempo.offset(step * steps)
+        }
+    }
+}
+
+/// Options → Audio.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    /// Output device name; `None` is the system default. When the device is
+    /// missing, the system default plays instead.
+    pub device: Option<String>,
+}
+
+/// Options → Volume.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VolumeSettings {
+    /// Per sound slot in dB: accent, normal, subdivision, bell.
+    pub accent_db: f32,
+    pub normal_db: f32,
+    pub sub_db: f32,
+    pub bell_db: f32,
+    /// Stereo position, −1 (left) … 1 (right).
+    pub pan: f32,
+    /// Bell on the bar start in compound meters (3+2…).
+    pub bell: bool,
+}
+
+impl Default for VolumeSettings {
+    fn default() -> Self {
+        Self {
+            accent_db: 0.0,
+            normal_db: -5.0,
+            sub_db: -15.0,
+            bell_db: -9.0,
+            pan: 0.0,
+            bell: true,
+        }
+    }
+}
+
+impl VolumeSettings {
+    /// Lowest slot level in dB.
+    pub const MIN_DB: f32 = -40.0;
+
+    /// Slot levels in dB (accent, normal, sub, bell), made valid.
+    pub fn slots_db(&self) -> [f32; 4] {
+        [self.accent_db, self.normal_db, self.sub_db, self.bell_db].map(|db| {
+            if db.is_finite() {
+                db.clamp(Self::MIN_DB, 0.0)
+            } else {
+                0.0
+            }
+        })
+    }
+
+    pub fn pan(&self) -> f32 {
+        if self.pan.is_finite() {
+            self.pan.clamp(-1.0, 1.0)
+        } else {
+            0.0
         }
     }
 }
@@ -312,6 +473,21 @@ mod tests {
                 pinned: true,
                 zoom: 1.2,
             },
+            interface: InterfaceSettings {
+                theme: "dark".into(),
+                quick_jump: 5.0,
+                quick_jump_percent: true,
+                ..InterfaceSettings::default()
+            },
+            audio: AudioSettings {
+                device: Some("Speakers".into()),
+            },
+            volume: VolumeSettings {
+                sub_db: -20.0,
+                pan: -0.5,
+                bell: false,
+                ..VolumeSettings::default()
+            },
         }
     }
 
@@ -375,6 +551,40 @@ mod tests {
         assert_eq!(s.metronome.meter(), Meter::default());
         assert!((s.window.zoom - 1.5).abs() < f32::EPSILON);
         assert!(!s.window.compact);
+    }
+
+    #[test]
+    fn interface_values() {
+        let mut i = InterfaceSettings {
+            theme: "sepia".into(),
+            slider_min: 300.0,
+            slider_max: 100.0,
+            ..InterfaceSettings::default()
+        };
+        assert_eq!(i.theme(), ThemeChoice::System);
+        assert_eq!(i.slider_range(), (300.0, 301.0));
+        i.slider_min = 0.0;
+        i.slider_max = 5000.0;
+        assert_eq!(i.slider_range(), (1.0, 999.0));
+        let t = Tempo::from_bpm(100.0);
+        assert_eq!(i.quick_jump(t, 1.0), Tempo::from_bpm(106.0));
+        i.quick_jump_percent = true;
+        i.quick_jump = 10.0;
+        assert_eq!(i.quick_jump(t, 1.0), Tempo::from_bpm(110.0));
+        assert_eq!(i.quick_jump(t, -1.0), Tempo::from_bpm(90.9));
+    }
+
+    #[test]
+    fn volume_values() {
+        let v = VolumeSettings {
+            accent_db: 3.0,
+            normal_db: -99.0,
+            sub_db: f32::NAN,
+            pan: 4.0,
+            ..VolumeSettings::default()
+        };
+        assert_eq!(v.slots_db(), [0.0, VolumeSettings::MIN_DB, 0.0, -9.0]);
+        assert!((v.pan() - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
