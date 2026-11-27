@@ -92,23 +92,6 @@ impl Subdivision {
     pub fn from_id(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|s| s.id() == id)
     }
-
-    /// English menu label.
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::None => "None",
-            Self::Single => "Single",
-            Self::Duple => "Duple",
-            Self::Triple => "Triple",
-            Self::Quadruple => "Quadruple",
-            Self::Quintuple => "Quintuple",
-            Self::Sextuple => "Sextuple",
-            Self::Septuple => "Septuple",
-            Self::Shuffle => "Shuffle (triplet 1st and 3rd)",
-            Self::QuadrupleFourth => "Quadruple 1st and 4th",
-        }
-    }
 }
 
 #[cfg(test)]

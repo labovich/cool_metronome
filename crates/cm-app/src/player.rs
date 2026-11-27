@@ -1,15 +1,24 @@
 //! Owns the audio output and keeps it in sync with the metronome settings.
 
-use cm_audio::{AudioOutput, EngineSetup, Waker};
-use cm_core::{Meter, Subdivision, Tempo};
-use cm_engine::{BarPattern, Command};
+use cm_audio::{AudioError, AudioOutput, EngineSetup, Waker};
+use cm_core::{Meter, Rhythm, Subdivision, TapTempo, Tempo};
+use cm_engine::{BarPattern, Command, EngineStatus};
 use std::time::{Duration, Instant};
+
+/// Why there is no sound.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerError {
+    /// The output could not be opened (retried periodically).
+    Audio(AudioError),
+    /// The command queue is full: the audio thread is stuck.
+    NotResponding,
+}
 
 #[derive(Debug)]
 pub struct Player {
     audio: Option<AudioOutput>,
     waker: Waker,
-    error: Option<String>,
+    error: Option<PlayerError>,
     last_attempt: Option<Instant>,
     /// Set after a command that may make the engine retire an object;
     /// one more [`Player::tick`] is due then to drop it.
@@ -19,7 +28,16 @@ pub struct Player {
     subdivision: Subdivision,
     bell: bool,
     playing: bool,
+    /// Master volume slider position, 0 (mute) … 1 (0 dB).
+    volume: f32,
+    tap: TapTempo,
+    tap_epoch: Instant,
+    /// Elapsed time shown while stopped (the length of the last run).
+    elapsed_stopped: Duration,
 }
+
+/// Wake-up interval while waiting for the engine to publish a beat.
+const POLL: Duration = Duration::from_millis(5);
 
 impl Player {
     /// How often to retry opening the audio device after a failure.
@@ -27,6 +45,8 @@ impl Player {
     /// How long after a command to collect what the engine replaced.
     /// The audio callback runs every few milliseconds, so it is done by then.
     const CLEANUP_DELAY: Duration = Duration::from_millis(100);
+    /// Volume range of the master slider above mute.
+    const VOLUME_RANGE_DB: f32 = 40.0;
 
     /// `waker` must make the owner call [`Player::tick`] soon; it is called
     /// from another thread when the audio device fails.
@@ -42,6 +62,10 @@ impl Player {
             subdivision: Subdivision::None,
             bell: true,
             playing: false,
+            volume: 1.0,
+            tap: TapTempo::new(false),
+            tap_epoch: Instant::now(),
+            elapsed_stopped: Duration::ZERO,
         };
         p.open();
         p
@@ -91,6 +115,7 @@ impl Player {
         };
         match AudioOutput::open(None, setup, Some(self.waker.clone())) {
             Ok(mut audio) => {
+                let _ = audio.send(Command::SetMaster(volume_gain(self.volume)));
                 if self.playing {
                     let _ = audio.send(Command::Start);
                 }
@@ -99,7 +124,7 @@ impl Player {
             }
             Err(e) => {
                 self.audio = None;
-                self.error = Some(e.to_string());
+                self.error = Some(PlayerError::Audio(e));
             }
         }
     }
@@ -122,7 +147,7 @@ impl Player {
         self.error = audio
             .send(command)
             .is_err()
-            .then(|| "the audio engine is not responding".to_owned());
+            .then_some(PlayerError::NotResponding);
     }
 
     fn push_pattern(&mut self) {
@@ -131,6 +156,11 @@ impl Player {
     }
 
     pub fn toggle(&mut self) {
+        self.elapsed_stopped = if self.playing {
+            self.elapsed(Instant::now())
+        } else {
+            Duration::ZERO
+        };
         self.playing = !self.playing;
         self.send(if self.playing {
             Command::Start
@@ -165,6 +195,15 @@ impl Player {
         }
     }
 
+    /// Switches to a library rhythm (its meter and subdivision) in one step.
+    pub fn set_rhythm(&mut self, rhythm: &Rhythm) {
+        if rhythm.meter != self.meter || rhythm.subdivision != self.subdivision {
+            self.meter = rhythm.meter.clone();
+            self.subdivision = rhythm.subdivision;
+            self.push_pattern();
+        }
+    }
+
     pub fn cycle_cell(&mut self, index: usize) {
         if let Some(level) = self.meter.cells().get(index).copied() {
             self.meter.set_level(index, level.cycled());
@@ -177,40 +216,120 @@ impl Player {
     }
 
     pub fn set_subdivision(&mut self, subdivision: Subdivision) {
-        self.subdivision = subdivision;
-        self.push_pattern();
+        if subdivision != self.subdivision {
+            self.subdivision = subdivision;
+            self.push_pattern();
+        }
     }
 
-    pub fn bell(&self) -> bool {
-        self.bell
+    /// Master volume slider position, 0 (mute) … 1.
+    pub fn volume(&self) -> f32 {
+        self.volume
     }
 
-    pub fn set_bell(&mut self, bell: bool) {
-        self.bell = bell;
-        self.push_pattern();
+    pub fn set_volume(&mut self, volume: f32) {
+        let volume = volume.clamp(0.0, 1.0);
+        if (volume - self.volume).abs() > f32::EPSILON {
+            self.volume = volume;
+            self.send(Command::SetMaster(volume_gain(volume)));
+        }
     }
 
-    /// Meter cell that is sounding now, while playing.
-    pub fn current_cell(&self) -> Option<usize> {
+    /// Registers a tap; sets the tempo once two or more taps are in.
+    pub fn tap(&mut self, now: Instant) {
+        let at = now.duration_since(self.tap_epoch).as_secs_f64();
+        if let Some(tempo) = self.tap.tap(at) {
+            self.set_tempo(tempo);
+        }
+    }
+
+    pub fn error(&self) -> Option<&PlayerError> {
+        self.error.as_ref()
+    }
+
+    /// The engine state of the current run, if the engine is playing it.
+    fn running_status(&self) -> Option<&EngineStatus> {
         if !self.playing {
             return None;
         }
-        let beat = self.audio.as_ref()?.status().last_beat()?;
-        Some(usize::from(beat.cell))
+        let status = self.audio.as_ref()?.status();
+        status.is_playing().then_some(&**status)
     }
 
-    pub fn device_info(&self) -> Option<String> {
-        self.audio.as_ref().map(|a| {
-            format!(
-                "{} · {} Hz · {} ch",
-                a.device_name(),
-                a.sample_rate(),
-                a.channels()
-            )
-        })
+    /// The meter cell being heard now (not merely rendered), while playing.
+    pub fn audible_cell(&self, now: Instant) -> Option<usize> {
+        let status = self.running_status()?;
+        let started = status.started_at();
+        let heard = |sample| status.heard_at(sample).unwrap_or(now);
+        let last = status.last_beat().filter(|b| b.sample >= started)?;
+        if heard(last.sample) <= now {
+            return Some(usize::from(last.cell));
+        }
+        status
+            .previous_beat()
+            .filter(|b| b.sample >= started && heard(b.sample) <= now)
+            .map(|b| usize::from(b.cell))
     }
 
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+    /// How long until the display changes by itself (next beat heard, next
+    /// timer second). `None` while stopped.
+    pub fn next_visual_change(&self, now: Instant) -> Option<Duration> {
+        let status = self.running_status()?;
+        let into_second = Duration::from_nanos(u64::from(self.elapsed(now).subsec_nanos()));
+        let mut wake = Duration::from_secs(1) - into_second;
+
+        let started = status.started_at();
+        match status.last_beat().filter(|b| b.sample >= started) {
+            None => wake = wake.min(POLL),
+            Some(beat) => {
+                let heard = status.heard_at(beat.sample).unwrap_or(now);
+                let until = if heard > now {
+                    heard - now
+                } else {
+                    // Predict the next cell; if it is late, poll briefly.
+                    let cell = Duration::from_secs_f64(
+                        self.tempo.beat_seconds() / f64::from(self.meter.subunits()),
+                    );
+                    (heard + cell)
+                        .checked_duration_since(now)
+                        .filter(|d| !d.is_zero())
+                        .unwrap_or(POLL)
+                };
+                wake = wake.min(until);
+            }
+        }
+        Some(wake)
+    }
+
+    /// Time since Play, as heard; frozen at the last run's length while stopped.
+    pub fn elapsed(&self, now: Instant) -> Duration {
+        match self.running_status() {
+            Some(status) => status
+                .heard_at(status.started_at())
+                .map_or(Duration::ZERO, |start| now.saturating_duration_since(start)),
+            None => self.elapsed_stopped,
+        }
+    }
+}
+
+/// Slider position → linear gain: 0 is silence, then −40 dB … 0 dB.
+fn volume_gain(position: f32) -> f32 {
+    if position <= 0.0 {
+        0.0
+    } else {
+        10f32.powf((position.min(1.0) - 1.0) * Player::VOLUME_RANGE_DB / 20.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::volume_gain;
+
+    #[test]
+    fn volume_curve() {
+        assert!(volume_gain(0.0).abs() < f32::EPSILON);
+        assert!((volume_gain(1.0) - 1.0).abs() < 1e-6);
+        assert!((volume_gain(0.5) - 0.1).abs() < 1e-6, "−20 dB at half");
+        assert!(volume_gain(0.01) > 0.0);
     }
 }

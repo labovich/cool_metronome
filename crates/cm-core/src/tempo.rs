@@ -57,6 +57,86 @@ impl Tempo {
     pub fn beat_seconds(self) -> f64 {
         60.0 / self.bpm()
     }
+
+    /// Returns this tempo multiplied by `factor` (×2, ÷2), clamped to the valid range.
+    #[must_use]
+    pub fn scaled(self, factor: f64) -> Self {
+        Self::from_bpm(self.bpm() * factor)
+    }
+
+    /// Traditional Italian tempo marking for this tempo.
+    #[must_use]
+    pub fn marking(self) -> TempoMarking {
+        TempoMarking::ALL
+            .into_iter()
+            .rev()
+            .find(|m| self.tenths >= m.lowest_tenths())
+            .unwrap_or(TempoMarking::Largo)
+    }
+}
+
+/// Italian tempo marking shown next to the BPM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TempoMarking {
+    /// Below 60 BPM.
+    Largo,
+    /// 60–65.9 BPM.
+    Larghetto,
+    /// 66–75.9 BPM.
+    Adagio,
+    /// 76–107.9 BPM.
+    Andante,
+    /// 108–119.9 BPM.
+    Moderato,
+    /// 120–167.9 BPM.
+    Allegro,
+    /// 168–199.9 BPM.
+    Presto,
+    /// 200 BPM and above.
+    Prestissimo,
+}
+
+impl TempoMarking {
+    /// Every marking, slowest first.
+    pub const ALL: [TempoMarking; 8] = [
+        Self::Largo,
+        Self::Larghetto,
+        Self::Adagio,
+        Self::Andante,
+        Self::Moderato,
+        Self::Allegro,
+        Self::Presto,
+        Self::Prestissimo,
+    ];
+
+    /// Lowest tempo of the range, in tenths of a BPM.
+    fn lowest_tenths(self) -> u16 {
+        match self {
+            Self::Largo => 0,
+            Self::Larghetto => 600,
+            Self::Adagio => 660,
+            Self::Andante => 760,
+            Self::Moderato => 1080,
+            Self::Allegro => 1200,
+            Self::Presto => 1680,
+            Self::Prestissimo => 2000,
+        }
+    }
+
+    /// Stable identifier for translations (`"allegro"`…).
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Largo => "largo",
+            Self::Larghetto => "larghetto",
+            Self::Adagio => "adagio",
+            Self::Andante => "andante",
+            Self::Moderato => "moderato",
+            Self::Allegro => "allegro",
+            Self::Presto => "presto",
+            Self::Prestissimo => "prestissimo",
+        }
+    }
 }
 
 impl Default for Tempo {
@@ -108,6 +188,25 @@ mod tests {
     fn display() {
         assert_eq!(Tempo::from_bpm(120.0).to_string(), "120");
         assert_eq!(Tempo::from_bpm(1.0).to_string(), "1");
+    }
+
+    #[test]
+    fn markings() {
+        let m = |bpm| Tempo::from_bpm(bpm).marking();
+        assert_eq!(m(1.0), TempoMarking::Largo);
+        assert_eq!(m(59.9), TempoMarking::Largo);
+        assert_eq!(m(60.0), TempoMarking::Larghetto);
+        assert_eq!(m(107.9), TempoMarking::Andante);
+        assert_eq!(m(120.0), TempoMarking::Allegro);
+        assert_eq!(m(199.9), TempoMarking::Presto);
+        assert_eq!(m(999.0), TempoMarking::Prestissimo);
+    }
+
+    #[test]
+    fn scaling() {
+        assert_eq!(Tempo::from_bpm(60.5).scaled(2.0), Tempo::from_bpm(121.0));
+        assert_eq!(Tempo::from_bpm(600.0).scaled(2.0), Tempo::MAX);
+        assert_eq!(Tempo::from_bpm(1.5).scaled(0.5), Tempo::MIN);
     }
 
     #[test]

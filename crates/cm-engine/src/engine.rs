@@ -4,6 +4,7 @@ use crate::sounds::SoundBank;
 use cm_core::Tempo;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Most clicks that can sound at once. The oldest is cut when more start.
 pub const MAX_VOICES: usize = 32;
@@ -41,14 +42,49 @@ pub enum Retired {
 }
 
 /// Lock-free state the UI reads to follow playback.
-#[derive(Debug, Default)]
+///
+/// Fields are updated one by one, so a reader may see a mix of two
+/// consecutive updates; that is harmless for display.
+#[derive(Debug)]
 pub struct EngineStatus {
     playing: AtomicBool,
+    sample_rate: AtomicU32,
     clock: AtomicU64,
+    started_at: AtomicU64,
     beat_sample: AtomicU64,
     beat_cell: AtomicU32,
     beat_bar: AtomicU64,
     beats_seen: AtomicU64,
+    prev_sample: AtomicU64,
+    prev_cell: AtomicU32,
+    prev_bar: AtomicU64,
+    /// Reference point for the output timing below.
+    epoch: Instant,
+    /// First sample of the last buffer handed to the device...
+    out_sample: AtomicU64,
+    /// ...and when it will be heard, in nanoseconds since `epoch` (0 = unknown).
+    out_heard_ns: AtomicU64,
+}
+
+impl Default for EngineStatus {
+    fn default() -> Self {
+        Self {
+            playing: AtomicBool::new(false),
+            sample_rate: AtomicU32::new(0),
+            clock: AtomicU64::new(0),
+            started_at: AtomicU64::new(0),
+            beat_sample: AtomicU64::new(0),
+            beat_cell: AtomicU32::new(0),
+            beat_bar: AtomicU64::new(0),
+            beats_seen: AtomicU64::new(0),
+            prev_sample: AtomicU64::new(0),
+            prev_cell: AtomicU32::new(0),
+            prev_bar: AtomicU64::new(0),
+            epoch: Instant::now(),
+            out_sample: AtomicU64::new(0),
+            out_heard_ns: AtomicU64::new(0),
+        }
+    }
 }
 
 /// The last meter cell that started, as seen by the UI.
@@ -77,7 +113,16 @@ impl EngineStatus {
         self.clock.load(Ordering::Relaxed)
     }
 
+    /// Sample at which the current run started (its first downbeat).
+    #[must_use]
+    pub fn started_at(&self) -> u64 {
+        self.started_at.load(Ordering::Relaxed)
+    }
+
     /// The last cell that started, or `None` before the first one.
+    ///
+    /// "Started" means rendered: it is heard a little later, see
+    /// [`EngineStatus::heard_at`].
     #[must_use]
     pub fn last_beat(&self) -> Option<BeatInfo> {
         let serial = self.beats_seen.load(Ordering::Acquire);
@@ -90,6 +135,56 @@ impl EngineStatus {
             bar: self.beat_bar.load(Ordering::Relaxed),
             serial,
         })
+    }
+
+    /// The cell before [`EngineStatus::last_beat`]: still the audible one
+    /// while the last is rendered but not yet heard.
+    #[must_use]
+    pub fn previous_beat(&self) -> Option<BeatInfo> {
+        let serial = self.beats_seen.load(Ordering::Acquire);
+        if serial < 2 {
+            return None;
+        }
+        Some(BeatInfo {
+            sample: self.prev_sample.load(Ordering::Relaxed),
+            cell: u16::try_from(self.prev_cell.load(Ordering::Relaxed)).unwrap_or(0),
+            bar: self.prev_bar.load(Ordering::Relaxed),
+            serial: serial - 1,
+        })
+    }
+
+    /// Records that the buffer starting at `first_sample` will be heard
+    /// `latency` from now. Called by the audio output for every buffer.
+    ///
+    /// Only reads the clock (no allocation, lock or I/O), so it is fine in
+    /// the audio callback.
+    pub fn set_output_time(&self, first_sample: u64, latency: Duration) {
+        let heard = self.epoch.elapsed() + latency;
+        let ns = u64::try_from(heard.as_nanos()).unwrap_or(u64::MAX).max(1);
+        self.out_sample.store(first_sample, Ordering::Relaxed);
+        self.out_heard_ns.store(ns, Ordering::Relaxed);
+    }
+
+    /// When `sample` is (or was) heard, or `None` while the output has not
+    /// reported its timing yet (no device, tests).
+    #[must_use]
+    pub fn heard_at(&self, sample: u64) -> Option<Instant> {
+        let ns = self.out_heard_ns.load(Ordering::Relaxed);
+        let rate = self.sample_rate.load(Ordering::Relaxed);
+        if ns == 0 || rate == 0 {
+            return None;
+        }
+        let base = self.epoch + Duration::from_nanos(ns);
+        let out = self.out_sample.load(Ordering::Relaxed);
+        let rate = f64::from(rate);
+        #[allow(clippy::cast_precision_loss)]
+        let heard = if sample >= out {
+            base + Duration::from_secs_f64((sample - out) as f64 / rate)
+        } else {
+            let back = Duration::from_secs_f64((out - sample) as f64 / rate);
+            base.checked_sub(back).unwrap_or(self.epoch)
+        };
+        Some(heard)
     }
 }
 
@@ -134,6 +229,7 @@ impl Engine {
         sounds: Box<SoundBank>,
         status: Arc<EngineStatus>,
     ) -> Self {
+        status.sample_rate.store(sample_rate, Ordering::Relaxed);
         Self {
             scheduler: Scheduler::new(pattern, tempo, sample_rate),
             sounds,
@@ -154,6 +250,7 @@ impl Engine {
             Command::Start => {
                 let r = self.scheduler.start(self.clock);
                 self.retire_pattern(r);
+                self.status.started_at.store(self.clock, Ordering::Relaxed);
                 self.status.playing.store(true, Ordering::Relaxed);
             }
             Command::Stop => {
@@ -280,6 +377,13 @@ impl Engine {
     }
 
     fn publish_beat(&self, sample: u64, cell: u16, bar: u64) {
+        let s = &self.status;
+        s.prev_sample
+            .store(s.beat_sample.load(Ordering::Relaxed), Ordering::Relaxed);
+        s.prev_cell
+            .store(s.beat_cell.load(Ordering::Relaxed), Ordering::Relaxed);
+        s.prev_bar
+            .store(s.beat_bar.load(Ordering::Relaxed), Ordering::Relaxed);
         self.status.beat_sample.store(sample, Ordering::Relaxed);
         self.status
             .beat_cell
@@ -379,6 +483,38 @@ mod tests {
         let mut n = 0;
         e.drain_retired(|_| n += 1);
         assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn status_tracks_previous_beat_and_start() {
+        let mut e = engine(120.0, 48_000);
+        let mut buf = vec![0.0; 1000];
+        e.render(&mut buf, 1);
+        e.handle(Command::Start);
+        assert_eq!(e.status.started_at(), 1000);
+        let mut buf = vec![0.0; 30_000];
+        e.render(&mut buf, 1);
+        let last = e.status.last_beat().unwrap();
+        let prev = e.status.previous_beat().unwrap();
+        assert_eq!((last.cell, last.sample), (1, 25_000));
+        assert_eq!((prev.cell, prev.sample), (0, 1000));
+    }
+
+    #[test]
+    fn heard_at_maps_samples_to_time() {
+        let status = EngineStatus::default();
+        assert!(
+            status.heard_at(0).is_none(),
+            "unknown before the first buffer"
+        );
+        status.sample_rate.store(48_000, Ordering::Relaxed);
+        status.set_output_time(48_000, Duration::from_millis(20));
+        let base = status.heard_at(48_000).unwrap();
+        let later = status.heard_at(96_000).unwrap();
+        let earlier = status.heard_at(24_000).unwrap();
+        assert_eq!(later - base, Duration::from_secs(1));
+        assert_eq!(base - earlier, Duration::from_millis(500));
+        assert!(base > Instant::now(), "heard after the latency");
     }
 
     #[test]

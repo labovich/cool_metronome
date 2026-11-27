@@ -37,5 +37,5 @@ Run fmt, clippy and tests before handing work back.
 
 ## Current state
 
-Stages 1–3 done (see `docs/PLAN.md` → Stages). `cm-app` shows a temporary engine test
-screen; the real UI per the approved mockup is stage 4. Next: stage 4.
+Stages 1–3 and 4a done (see `docs/PLAN.md` → Stages): `cm-app` shows the main window per
+the mockup. Next: 4b (title bar, compact mode, keymap).

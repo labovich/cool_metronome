@@ -6,9 +6,11 @@
 mod meter;
 mod rhythm;
 mod subdivision;
+mod tap;
 mod tempo;
 
 pub use meter::{BeatLevel, Meter, MeterError};
 pub use rhythm::{Rhythm, RhythmCategory, RhythmError, parse_rhythms};
 pub use subdivision::Subdivision;
-pub use tempo::Tempo;
+pub use tap::TapTempo;
+pub use tempo::{Tempo, TempoMarking};

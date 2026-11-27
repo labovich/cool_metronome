@@ -19,12 +19,12 @@ pub enum RhythmCategory {
 }
 
 impl RhythmCategory {
-    /// English menu label.
+    /// Stable identifier (`"latin"`, `"flamenco"`), as in the data files.
     #[must_use]
-    pub fn label(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
-            Self::Latin => "Latin",
-            Self::Flamenco => "Flamenco",
+            Self::Latin => "latin",
+            Self::Flamenco => "flamenco",
         }
     }
 }
@@ -34,7 +34,7 @@ impl RhythmCategory {
 pub struct Rhythm {
     /// Stable identifier, unique in the library.
     pub id: String,
-    /// English display name.
+    /// English display name from the data file; the UI prefers a translation.
     pub name: String,
     /// Library group.
     pub category: RhythmCategory,

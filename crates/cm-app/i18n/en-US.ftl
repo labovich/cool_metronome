@@ -1,0 +1,89 @@
+# Cool Metronome: English UI strings.
+# To add a language, copy this file to <lang>.ftl and translate the values.
+
+app-title = Cool Metronome
+
+## Tempo
+
+# Shown under the big BPM number: "BPM · Allegro · 1:23".
+tempo-subtitle = BPM · { $marking } · { $elapsed }
+tempo-slower = Slower
+tempo-faster = Faster
+tempo-slider = Tempo
+
+tempo-largo = Largo
+tempo-larghetto = Larghetto
+tempo-adagio = Adagio
+tempo-andante = Andante
+tempo-moderato = Moderato
+tempo-allegro = Allegro
+tempo-presto = Presto
+tempo-prestissimo = Prestissimo
+
+## Beats
+
+# Accessible name of a beat circle.
+beat-label = Beat { $number }: { $level ->
+    [accent] accent
+    [mute] muted
+   *[normal] normal
+}
+
+## Bottom row
+
+meter = Meter
+meter-section-meters = Meters
+subdivision = Subdivision
+presets = Presets
+presets-later = Presets arrive in a later version.
+volume = Volume
+volume-muted = Muted
+tap = TAP
+tap-hint = Tap tempo
+play = Play
+stop = Stop
+
+subdivision-none = No subdiv
+subdivision-single = Single
+subdivision-duple = Duple
+subdivision-triple = Triplet
+subdivision-quadruple = Quad
+subdivision-quintuple = Quintuplet
+subdivision-sextuple = Sextuplet
+subdivision-septuple = Septuplet
+subdivision-shuffle = Shuffle
+subdivision-quadruple-fourth = Quad 1st + 4th
+
+## Rhythm library (ids from crates/cm-core/rhythms)
+# Optional .short: shown on the meter chip when the full name is long.
+
+rhythm-category-latin = Latin
+rhythm-category-flamenco = Flamenco
+
+rhythm-son-clave-3-2 = Son clave 3-2
+    .short = Son 3-2
+rhythm-son-clave-2-3 = Son clave 2-3
+    .short = Son 2-3
+rhythm-rumba-clave-3-2 = Rumba clave 3-2
+    .short = Rumba 3-2
+rhythm-rumba-clave-2-3 = Rumba clave 2-3
+    .short = Rumba 2-3
+rhythm-afro-6-8 = 6/8 Afro
+rhythm-bossa-nova-3-2 = Bossa nova 3-2
+    .short = Bossa 3-2
+rhythm-bossa-nova-2-3 = Bossa nova 2-3
+    .short = Bossa 2-3
+rhythm-samba = Samba
+rhythm-merengue = Merengue
+rhythm-solea = Soleá
+rhythm-seguiriya = Seguiriya
+rhythm-buleria = Bulería
+
+## Audio errors
+
+audio-error-no-device = No audio output device found
+audio-error-device-not-found = Audio device "{ $name }" not found
+audio-error-config = Cannot read the audio device settings: { $detail }
+audio-error-format = Unsupported audio sample format { $detail }
+audio-error-stream = Cannot start audio output: { $detail }
+audio-error-not-responding = The audio engine is not responding

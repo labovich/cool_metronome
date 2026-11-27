@@ -62,7 +62,7 @@ Cargo workspace (`crates/`):
 | `cm-engine` | Sample-accurate scheduler + mixer, no device, no allocations in the hot path. Shared by playback, export and tests. | Done |
 | `cm-audio` | cpal output, rtrb command queue, retired-object queue, device recovery; later sample decoding (symphonia) + resampling (rubato). | Done (basic) |
 | `cm-export` | WAV (hound), FLAC (flacenc), OGG (vorbis_rs). | Stage 7 |
-| `cm-app` | egui app; tray-icon, global-hotkey, settings, Fluent i18n, update check. | Temporary test screen |
+| `cm-app` | egui app; tray-icon, global-hotkey, settings, Fluent i18n, update check. | Main window (stage 4a) |
 | `cm-probe` | Loopback measurement tool for real hardware. | Stage 8 |
 
 ### Timing rules (do not break)
@@ -75,7 +75,10 @@ Cargo workspace (`crates/`):
 4. Pattern change: applied at the next bar start (immediately when stopped).
 5. Audio callback: no allocation, free, locks, I/O or logging. Replaced objects go back
    through a queue and are dropped on the UI thread (`AudioOutput::collect_garbage`).
-6. UI repaints only on events / while playing. Idle CPU ≈ 0%.
+6. UI repaints only on events, when a beat is heard and once a second for the timer
+   (no continuous frames, no transition animations). vsync is off: some OpenGL drivers
+   busy-wait in it. The beat indicator follows the *heard* beat: the audio output
+   reports when each buffer reaches the speakers (`EngineStatus::heard_at`).
 
 Resource targets (guidelines, measure before release): idle ≈0% CPU, playing ≤1%,
 ≤50 MB RAM, installer ≤10 MB.
@@ -87,7 +90,7 @@ Own modern design, not a copy of the original.
 
 - Main window 440×320 logical points by default (Full HD 100% = 440×320 px, 4K 200% =
   880×640 px). Resizable, min 380×280, size/position remembered. Per-monitor DPI plus own
-  UI zoom 80–200% (Ctrl+= / Ctrl+− / Ctrl+0).
+  UI zoom 80–200% (Ctrl+= / Ctrl+− / Ctrl+Shift+0; Ctrl+0 belongs to subdivisions).
 - Custom title bar: app name; buttons pin (always on top), hide to tray, minimize, close (= quit).
 - Beat row: circles per beat, accent larger and orange (#FF8A3D), muted = outline; click
   cycles normal → accent → mute; current beat highlighted.
@@ -96,7 +99,10 @@ Own modern design, not a copy of the original.
 - Bottom row: meter chip, subdivision chip, presets, volume, TAP, big round Play.
 - Compact mode (double-click title bar): 440×96 strip with BPM ±, beats, Play, expand, close.
 - Dark palette: bg #16171B, surface #25272E, border #30333B, text #F1F1F4, secondary #A3A5AD.
-  Light: bg #FAFAFB, surface #ECEDF0, border #DADCE1, text #18191D, secondary #585B63. Font Inter.
+  Light: bg #FAFAFB, surface #ECEDF0, border #DADCE1, text #18191D, secondary #585B63. Font Inter
+  (Medium + SemiBold, Latin subset with tabular digits, ~27 KB each, built by
+  `crates/cm-app/assets/fonts/subset.py`); egui's default fonts are not linked. Icons are
+  vector paths from the mockup SVGs.
 - Default keymap (as in the original): Space play/stop; ←/→ ±1 BPM (Shift ±0.1);
   PgUp/PgDn and Ctrl+←/→ quick jump (6 by default); Shift+− / Shift+= halve/double;
   ↑/↓ volume (Ctrl coarse); Enter or T tap; 1–8 beats; Ctrl+0…7 subdivision, Alt+3 shuffle,
@@ -134,7 +140,14 @@ the period in f32 makes them fail.
    cell grid (`X` accent, `x` normal, `.` mute), picker on the test screen, accuracy
    tests for every library rhythm; bell logic verified by the owner. Samba, merengue and
    flamenco grids are typical variants — to be refined by ear later.
-4. UI per mockup: main window, themes, Fluent strings, custom title bar, compact mode.
+4. UI per mockup, in two parts.
+   - **4a, done:** main window (beats, BPM, tempo name, timer,
+     slider, meter/subdivision menus with the rhythm library, volume, TAP, Play), light and
+     dark themes following the system, Inter subset, Fluent strings (`crates/cm-app/i18n`),
+     UI zoom, beat indicator in sync with what is heard, minimal repaints. Presets button
+     is shown inactive until stage 5.
+   - **4b:** custom title bar (pin, hide to tray — inactive until stage 6, minimize, close),
+     window drag/resize, compact mode, default local keymap.
 5. Settings and data: options window (Sound, Volume, Interface, Hotkeys, Audio), own
    samples, per-slot volume, pan, fade-in, boost, device choice, profile storage,
    meter constructor, presets.

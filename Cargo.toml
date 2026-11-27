@@ -27,14 +27,18 @@ cpal = "0.18"
 rtrb = "0.3"
 
 # GUI: glow (OpenGL) backend instead of the default wgpu — smaller binary, less RAM.
+# No egui default fonts: the app embeds a small Inter subset instead.
 eframe = { version = "0.37", default-features = false, features = [
     "glow",
     "accesskit",
-    "default_fonts",
     "wayland",
     "x11",
 ] }
 egui = "0.37"
+
+# UI strings (Fluent).
+fluent-bundle = "0.16"
+unic-langid = "0.9"
 
 # Data files (rhythm library now, settings later). Parse-only TOML for now.
 serde = { version = "1", features = ["derive"] }

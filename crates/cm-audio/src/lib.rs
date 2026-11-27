@@ -173,6 +173,7 @@ impl AudioOutput {
             retired: retired_tx,
             failed: Arc::clone(&failed),
             waker,
+            status: Arc::clone(&status),
         };
 
         let stream = match format {
@@ -257,6 +258,7 @@ struct CallbackParts {
     retired: rtrb::Producer<Retired>,
     failed: Arc<AtomicBool>,
     waker: Option<Waker>,
+    status: Arc<EngineStatus>,
 }
 
 fn build<T>(
@@ -274,14 +276,18 @@ where
         mut retired,
         failed,
         waker,
+        status,
     } = parts;
     // Allocated once here, never in the callback.
     let mut scratch = vec![0.0_f32; MAX_BLOCK_FRAMES * channels];
 
-    let data_callback = move |data: &mut [T], _info: &cpal::OutputCallbackInfo| {
+    let data_callback = move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
         while let Ok(command) = commands.pop() {
             engine.handle(command);
         }
+        // Lets the UI show each beat when it is heard, not when it is rendered.
+        let ts = info.timestamp();
+        status.set_output_time(engine.clock(), ts.playback.duration_since(ts.callback));
         for chunk in data.chunks_mut(MAX_BLOCK_FRAMES * channels) {
             let buf = &mut scratch[..chunk.len()];
             engine.render(buf, channels);

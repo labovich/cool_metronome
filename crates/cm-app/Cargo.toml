@@ -19,6 +19,8 @@ cm-engine.workspace = true
 cm-audio.workspace = true
 eframe.workspace = true
 egui.workspace = true
+fluent-bundle.workspace = true
+unic-langid.workspace = true
 
 [lints]
 workspace = true
