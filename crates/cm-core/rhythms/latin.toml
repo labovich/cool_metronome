@@ -1,0 +1,71 @@
+# Built-in rhythm library: Latin patterns.
+#
+# Each [[rhythm]] is one bar:
+#   id          stable identifier (presets refer to it), unique across all files
+#   name        English display name
+#   subunits    cells per beat; the tempo counts beats
+#   grid        one character per cell: X accent, x normal, . mute;
+#               spaces and | are ignored (used here to set beats apart)
+#   subdivision optional, see Subdivision::id (default "none")
+#
+# Clave patterns use 4 subunits per beat (sixteenths over one 4/4 bar).
+# The first stroke of each pattern is accented to mark the cycle start.
+
+category = "latin"
+
+[[rhythm]]
+id = "son-clave-3-2"
+name = "Son clave 3-2"
+subunits = 4
+grid = "X..x ..x. ..x. x..."
+
+[[rhythm]]
+id = "son-clave-2-3"
+name = "Son clave 2-3"
+subunits = 4
+grid = "..X. x... x..x ..x."
+
+[[rhythm]]
+id = "rumba-clave-3-2"
+name = "Rumba clave 3-2"
+subunits = 4
+grid = "X..x ...x ..x. x..."
+
+[[rhythm]]
+id = "rumba-clave-2-3"
+name = "Rumba clave 2-3"
+subunits = 4
+grid = "..X. x... x..x ...x"
+
+# Bell pattern in 12/8: 3 subunits per dotted-quarter beat.
+[[rhythm]]
+id = "afro-6-8"
+name = "6/8 Afro"
+subunits = 3
+grid = "X.x .xx .x. x.x"
+
+[[rhythm]]
+id = "bossa-nova-3-2"
+name = "Bossa nova 3-2"
+subunits = 4
+grid = "X..x ..x. ..x. .x.."
+
+[[rhythm]]
+id = "bossa-nova-2-3"
+name = "Bossa nova 2-3"
+subunits = 4
+grid = "..X. .x.. x..x ..x."
+
+# Typical tamborim pattern; provisional, to be checked by ear.
+[[rhythm]]
+id = "samba"
+name = "Samba"
+subunits = 4
+grid = "X.xx .x.x .xx. x.x."
+
+# Typical tambora pattern; provisional, to be checked by ear.
+[[rhythm]]
+id = "merengue"
+name = "Merengue"
+subunits = 4
+grid = "X..x x.x. x..x x.xx"

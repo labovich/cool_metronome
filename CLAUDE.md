@@ -37,6 +37,5 @@ Run fmt, clippy and tests before handing work back.
 
 ## Current state
 
-Stages 1–2 done (see `docs/PLAN.md` → Stages). `cm-app` shows a temporary engine test
-screen; the real UI per the approved mockup is stage 4. Next: owner checks the sound by
-ear, then stage 3.
+Stages 1–3 done (see `docs/PLAN.md` → Stages). `cm-app` shows a temporary engine test
+screen; the real UI per the approved mockup is stage 4. Next: stage 4.

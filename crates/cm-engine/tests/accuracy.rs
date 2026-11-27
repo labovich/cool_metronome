@@ -10,7 +10,7 @@
     clippy::float_cmp
 )]
 
-use cm_core::{BeatLevel, Meter, Subdivision, Tempo};
+use cm_core::{BeatLevel, Meter, Rhythm, Subdivision, Tempo};
 use cm_engine::{BarPattern, ClickKind, Command, Engine, EngineStatus, Scheduler, SoundBank};
 use std::sync::Arc;
 
@@ -107,6 +107,22 @@ fn all_sample_rates_and_extreme_tempos() {
                 assert!(
                     worst <= TOLERANCE,
                     "{name} @ {bpm} BPM, {rate} Hz: worst error {worst:.3} samples"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn builtin_rhythms_without_drift() {
+    for rhythm in Rhythm::builtin() {
+        for sub in [rhythm.subdivision, Subdivision::Triple] {
+            for (bpm, rate) in [(40.0, 44_100), (133.7, 48_000), (999.0, 96_000)] {
+                let worst = check_schedule(&rhythm.meter, sub, bpm, rate, 600.0);
+                assert!(
+                    worst <= TOLERANCE,
+                    "{} {sub:?} @ {bpm} BPM, {rate} Hz: worst error {worst:.3} samples",
+                    rhythm.id
                 );
             }
         }

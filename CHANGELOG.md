@@ -22,3 +22,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   block-size independence, random tempo changes during playback.
 - Temporary engine test screen: play/stop, tempo, meter, subdivision, bell,
   clickable beat indicator.
+- Rhythm library as TOML data files embedded in the binary: son and rumba clave
+  3-2/2-3, 6/8 Afro, bossa nova 3-2/2-3, samba, merengue, soleá, seguiriya,
+  bulería. Meters can be written as cell grids (`X..x ..x.`).
+- Rhythm picker on the test screen.
+
+### Fixed
+- Audio housekeeping (freeing replaced objects, recovering a lost device) now
+  also runs while the window is minimized or the metronome is idle.
+- CI runs on pushes to `master`.

@@ -1,0 +1,26 @@
+# Built-in rhythm library: flamenco compás (12 counts, one cell per count).
+# Format: see latin.toml. Typical accent placements; provisional, to be
+# checked by ear.
+
+category = "flamenco"
+
+# Counts 1..12, accents on 3, 6, 8, 10, 12.
+[[rhythm]]
+id = "solea"
+name = "Soleá"
+subunits = 1
+grid = "xxX xxX xX xX xX"
+
+# Groups 2+2+3+3+2, accents on 1, 3, 5, 8, 11.
+[[rhythm]]
+id = "seguiriya"
+name = "Seguiriya"
+subunits = 1
+grid = "Xx Xx Xxx Xxx Xx"
+
+# Starts on count 12: 12 1 2 3 … 11, accents on 12, 3, 6, 8, 10.
+[[rhythm]]
+id = "buleria"
+name = "Bulería"
+subunits = 1
+grid = "Xxx Xxx Xx Xx Xx"

@@ -8,7 +8,7 @@
 
 mod player;
 
-use cm_core::{BeatLevel, Meter, Subdivision, Tempo};
+use cm_core::{BeatLevel, Meter, Rhythm, Subdivision, Tempo};
 use player::Player;
 use std::time::Duration;
 
@@ -44,6 +44,7 @@ fn main() -> eframe::Result {
 #[derive(Debug)]
 struct TestScreen {
     player: Player,
+    rhythms: Vec<Rhythm>,
     formula: String,
     formula_ok: bool,
 }
@@ -52,16 +53,50 @@ impl TestScreen {
     fn new(waker: cm_audio::Waker) -> Self {
         Self {
             player: Player::new(waker),
+            rhythms: Rhythm::builtin(),
             formula: "4".to_owned(),
             formula_ok: true,
         }
     }
 
+    fn rhythm_picker(&mut self, ui: &mut egui::Ui) {
+        let meter = self.player.meter();
+        let subdivision = self.player.subdivision();
+        let current = self
+            .rhythms
+            .iter()
+            .position(|r| &r.meter == meter && r.subdivision == subdivision);
+        let mut picked = None;
+        egui::ComboBox::from_id_salt("rhythm")
+            .selected_text(current.map_or("Custom", |i| self.rhythms[i].name.as_str()))
+            .show_ui(ui, |ui| {
+                let mut category = None;
+                for (i, r) in self.rhythms.iter().enumerate() {
+                    if category != Some(r.category) {
+                        category = Some(r.category);
+                        ui.weak(r.category.label());
+                    }
+                    if ui.selectable_label(current == Some(i), &r.name).clicked() {
+                        picked = Some(i);
+                    }
+                }
+            });
+        if let Some(i) = picked {
+            let r = &self.rhythms[i];
+            self.player.set_meter(r.meter.clone());
+            self.player.set_subdivision(r.subdivision);
+            self.formula = self.player.meter().label();
+            self.formula_ok = true;
+        }
+    }
+
     fn beat_indicator(&mut self, ui: &mut egui::Ui) {
-        let radius = 10.0_f32;
-        let step = 2.0 * radius + 8.0;
         let cells: Vec<BeatLevel> = self.player.meter().cells().to_vec();
-        let width = (cells.len() as f32 * step).max(step);
+        // Shrink the circles so long bars (16-cell clave) fit the window.
+        let n = cells.len().max(1) as f32;
+        let step = (ui.available_width() / n).clamp(8.0, 28.0);
+        let radius = (step - 8.0).max(step * 0.6) / 2.0;
+        let width = n * step;
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, 2.0 * radius + 8.0), egui::Sense::click());
         let current = self.player.current_cell();
@@ -188,6 +223,11 @@ impl eframe::App for TestScreen {
                 if sub != self.player.subdivision() {
                     self.player.set_subdivision(sub);
                 }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Rhythm");
+                self.rhythm_picker(ui);
             });
 
             let mut bell = self.player.bell();

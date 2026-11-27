@@ -29,6 +29,8 @@ impl BeatLevel {
 pub enum MeterError {
     /// The grouping formula could not be parsed.
     BadFormula(String),
+    /// A cell grid has a character other than `X`, `x`, `.`, space or `|`.
+    BadGrid(String),
     /// No cells, or more than [`Meter::MAX_CELLS`].
     BadLength(usize),
     /// Subunits per beat outside 1..=[`Meter::MAX_SUBUNITS`].
@@ -39,6 +41,10 @@ impl fmt::Display for MeterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BadFormula(s) => write!(f, "cannot parse meter formula \"{s}\""),
+            Self::BadGrid(s) => write!(
+                f,
+                "cannot parse cell grid \"{s}\" (use X accent, x normal, . mute)"
+            ),
             Self::BadLength(n) => {
                 write!(f, "a bar must have 1..={} cells, got {n}", Meter::MAX_CELLS)
             }
@@ -121,6 +127,47 @@ impl Meter {
             cells.extend(std::iter::repeat_n(BeatLevel::Normal, n - 1));
         }
         Self::new(1, cells)
+    }
+
+    /// Parses a cell grid: `X` accent, `x` normal, `.` mute, one character
+    /// per cell. Spaces and `|` are ignored, so beats can be set apart:
+    /// `"X..x ..x. ..x. x..."`.
+    ///
+    /// # Errors
+    /// On any other character, or if the cell count or `subunits` is out of range.
+    pub fn from_grid(subunits: u8, grid: &str) -> Result<Self, MeterError> {
+        let mut cells = Vec::new();
+        for ch in grid.chars() {
+            let level = match ch {
+                'X' => BeatLevel::Accent,
+                'x' => BeatLevel::Normal,
+                '.' => BeatLevel::Mute,
+                c if c.is_whitespace() || c == '|' => continue,
+                _ => return Err(MeterError::BadGrid(grid.to_owned())),
+            };
+            if cells.len() == Self::MAX_CELLS {
+                return Err(MeterError::BadLength(Self::MAX_CELLS + 1));
+            }
+            cells.push(level);
+        }
+        Self::new(subunits, cells)
+    }
+
+    /// The cells as a grid string (see [`Meter::from_grid`]), one space between beats.
+    #[must_use]
+    pub fn grid(&self) -> String {
+        let mut out = String::with_capacity(self.cells.len() * 2);
+        for (i, cell) in self.cells.iter().enumerate() {
+            if i > 0 && i % usize::from(self.subunits) == 0 {
+                out.push(' ');
+            }
+            out.push(match cell {
+                BeatLevel::Accent => 'X',
+                BeatLevel::Normal => 'x',
+                BeatLevel::Mute => '.',
+            });
+        }
+        out
     }
 
     /// Cells per beat.
@@ -255,6 +302,22 @@ mod tests {
         assert_eq!(N.cycled(), A);
         assert_eq!(A.cycled(), M);
         assert_eq!(M.cycled(), N);
+    }
+
+    #[test]
+    fn grid_parsing() {
+        let m = Meter::from_grid(4, "X..x | ..x. ..x. x...").unwrap();
+        assert_eq!(m.subunits(), 4);
+        assert_eq!(m.len(), 16);
+        assert_eq!(&m.cells()[..4], &[A, M, M, N]);
+        assert_eq!(m.grid(), "X..x ..x. ..x. x...");
+        assert_eq!(Meter::from_grid(4, &m.grid()).unwrap(), m);
+        assert!(matches!(
+            Meter::from_grid(1, "Xo"),
+            Err(MeterError::BadGrid(_))
+        ));
+        assert!(Meter::from_grid(1, " | ").is_err());
+        assert!(Meter::from_grid(1, &"x".repeat(Meter::MAX_CELLS + 1)).is_err());
     }
 
     #[test]

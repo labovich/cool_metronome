@@ -49,8 +49,8 @@ no drift. Second: minimal resource use — weigh it in every technical decision.
   shows the beat number, remembers position and size, has reset.
 - Export: one loopable bar, N bars or a duration; 44.1/48 kHz, 16/24 bit.
 - System: output device, buffer size, switch device when the current one disappears.
-- Bell (not described in the original manual): working assumption — it marks the bar
-  start in meters with several accented groups (3+2). Verify by ear in Fine Metronome.
+- Bell (not described in the original manual): marks the bar start in meters with
+  several accented beat starts (3+2). Verified by the owner against Fine Metronome.
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Cargo workspace (`crates/`):
 
 | Crate | Role | Status |
 | --- | --- | --- |
-| `cm-core` | Pure model, no I/O: `Tempo`, `Meter`, `BeatLevel`, `Subdivision`; later rhythm library, presets. | Done for stage 2 |
+| `cm-core` | Pure model, no I/O: `Tempo`, `Meter`, `BeatLevel`, `Subdivision`, rhythm library (TOML in `crates/cm-core/rhythms/`, embedded at compile time); later presets. | Done for stage 3 |
 | `cm-engine` | Sample-accurate scheduler + mixer, no device, no allocations in the hot path. Shared by playback, export and tests. | Done |
 | `cm-audio` | cpal output, rtrb command queue, retired-object queue, device recovery; later sample decoding (symphonia) + resampling (rubato). | Done (basic) |
 | `cm-export` | WAV (hound), FLAC (flacenc), OGG (vorbis_rs). | Stage 7 |
@@ -130,7 +130,10 @@ the period in f32 makes them fail.
 1. **Done.** Workspace, licenses, README, CI, release skeleton.
 2. **Done, pending owner's check by ear.** Engine, 4 synthesized sounds, cpal output,
    accuracy tests, temporary test screen in `cm-app` (it looks rough — it is temporary).
-3. Rhythm model: rhythm library (Latin, flamenco) as data files, bell logic verified.
+3. **Done.** Rhythm model: rhythm library (Latin, flamenco) as TOML data files with a
+   cell grid (`X` accent, `x` normal, `.` mute), picker on the test screen, accuracy
+   tests for every library rhythm; bell logic verified by the owner. Samba, merengue and
+   flamenco grids are typical variants — to be refined by ear later.
 4. UI per mockup: main window, themes, Fluent strings, custom title bar, compact mode.
 5. Settings and data: options window (Sound, Volume, Interface, Hotkeys, Audio), own
    samples, per-slot volume, pan, fade-in, boost, device choice, profile storage,

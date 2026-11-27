@@ -36,6 +36,10 @@ eframe = { version = "0.37", default-features = false, features = [
 ] }
 egui = "0.37"
 
+# Data files (rhythm library now, settings later). Parse-only TOML for now.
+serde = { version = "1", features = ["derive"] }
+toml = { version = "1", default-features = false, features = ["std", "serde", "parse"] }
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_debug_implementations = "warn"

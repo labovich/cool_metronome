@@ -70,6 +70,29 @@ impl Subdivision {
         }
     }
 
+    /// Stable identifier used in data files (`"duple"`, `"quadruple-fourth"`…).
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Single => "single",
+            Self::Duple => "duple",
+            Self::Triple => "triple",
+            Self::Quadruple => "quadruple",
+            Self::Quintuple => "quintuple",
+            Self::Sextuple => "sextuple",
+            Self::Septuple => "septuple",
+            Self::Shuffle => "shuffle",
+            Self::QuadrupleFourth => "quadruple-fourth",
+        }
+    }
+
+    /// The subdivision with this [`Subdivision::id`].
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.id() == id)
+    }
+
     /// English menu label.
     #[must_use]
     pub fn label(self) -> &'static str {
@@ -105,5 +128,13 @@ mod tests {
         assert_eq!(played(Subdivision::Septuple), vec![1, 2, 3, 4, 5, 6]);
         assert_eq!(played(Subdivision::Shuffle), vec![2]);
         assert_eq!(played(Subdivision::QuadrupleFourth), vec![3]);
+    }
+
+    #[test]
+    fn ids_round_trip() {
+        for s in Subdivision::ALL {
+            assert_eq!(Subdivision::from_id(s.id()), Some(s));
+        }
+        assert_eq!(Subdivision::from_id("Duple"), None);
     }
 }
