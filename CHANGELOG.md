@@ -33,6 +33,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   release binary got ~0.5 MB smaller).
 - UI strings in Fluent (`crates/cm-app/i18n/en-US.ftl`).
 - UI zoom 80–200 % with Ctrl+= / Ctrl+− / Ctrl+Shift+0.
+- Typed tempo: double-click the BPM number, type 1–999 ("." or "," for tenths),
+  Enter applies, Esc cancels.
 - The beat indicator lights up when the beat is heard, not when it is rendered.
 
 ### Fixed

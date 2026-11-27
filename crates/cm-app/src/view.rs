@@ -9,10 +9,11 @@ use crate::player::{Player, PlayerError};
 use crate::theme::{self, ACCENT, ON_ACCENT, Palette};
 use cm_audio::AudioError;
 use cm_core::{BeatLevel, Meter, Rhythm, RhythmCategory, Subdivision, Tempo};
+use egui::text::{CCursor, CCursorRange};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
-    Align2, Color32, CursorIcon, FontId, Galley, Id, Popup, PopupCloseBehavior, Rect, Response,
-    Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Galley, Id, Key, Popup, PopupCloseBehavior, Rect,
+    Response, Role, Sense, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -31,11 +32,35 @@ const ROW_GAP: f32 = 6.0;
 const SLIDER_MIN: f64 = 40.0;
 const SLIDER_MAX: f64 = 208.0;
 
+/// Longest tempo text that can be typed ("999.9").
+const TEMPO_CHARS: usize = 5;
+
+/// Typed tempo entry, shown over the BPM number after a double-click.
+#[derive(Debug)]
+pub struct TempoEdit {
+    text: String,
+    /// Focus the field and select all on the next frame.
+    opening: bool,
+    /// The last Enter had an invalid value.
+    invalid: bool,
+}
+
+impl TempoEdit {
+    fn new(tempo: Tempo) -> Self {
+        Self {
+            text: tempo.to_string(),
+            opening: true,
+            invalid: false,
+        }
+    }
+}
+
 /// What the main view needs for one frame.
 pub struct View<'a> {
     pub player: &'a mut Player,
     pub i18n: &'a I18n,
     pub rhythms: &'a [Rhythm],
+    pub tempo_edit: &'a mut Option<TempoEdit>,
     pub p: Palette,
     pub now: Instant,
 }
@@ -144,9 +169,43 @@ impl View<'_> {
             self.player.set_tempo(self.player.tempo().offset(step));
         }
 
-        // Big number: whole part 64 pt, ".tenths" 20 pt, baselines aligned.
-        let painter = ui.painter();
+        let block_h = 64.0 + 2.0 + 15.0;
+        let line_top = rect.top() + (rect.height() - block_h) / 2.0;
         let tempo = self.player.tempo();
+        if self.tempo_edit.is_some() {
+            self.tempo_field(ui, rect, line_top);
+        } else {
+            self.tempo_number(ui, rect, line_top, tempo);
+        }
+
+        let (line, color) = if let Some(edit) = &self.tempo_edit {
+            if edit.invalid {
+                (self.i18n.tr("tempo-edit-invalid"), ACCENT)
+            } else {
+                (self.i18n.tr("tempo-edit-hint"), self.p.text2)
+            }
+        } else if let Some(e) = self.player.error() {
+            (error_text(self.i18n, e), ACCENT)
+        } else {
+            let marking = self.i18n.tr(&format!("tempo-{}", tempo.marking().id()));
+            let elapsed = format_elapsed(self.player.elapsed(self.now));
+            let line = self.i18n.tr_args(
+                "tempo-subtitle",
+                &[("marking", marking.into()), ("elapsed", elapsed.into())],
+            );
+            (line, self.p.text2)
+        };
+        let painter = ui.painter();
+        let max_w = plus.left() - minus.right() - 8.0;
+        let sub = text_elided(painter, &line, theme::medium(12.0), color, 0.4, max_w);
+        let pos = pos2(rect.center().x - sub.size().x / 2.0, line_top + 66.0);
+        painter.galley(pos, sub, color);
+    }
+
+    /// The big BPM number: whole part 64 pt, ".tenths" 20 pt, baselines
+    /// aligned. A double-click opens [`TempoEdit`].
+    fn tempo_number(&mut self, ui: &mut Ui, rect: Rect, line_top: f32, tempo: Tempo) {
+        let painter = ui.painter();
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let tenths = (tempo.bpm() * 10.0).round() as u32;
         let whole = text(
@@ -163,12 +222,22 @@ impl View<'_> {
             self.p.text2,
             0.0,
         );
-        let block_h = 64.0 + 2.0 + 15.0;
-        let line_top = rect.top() + (rect.height() - block_h) / 2.0;
-        // CSS line box of 64 px: Inter's baseline sits 55 px below its top.
+        // CSS line box of 64 px: the Inter baseline sits 55 px below its top.
         let baseline = line_top + 55.25;
         let width = whole.size().x + 6.0 + frac.size().x;
         let x = rect.center().x - width / 2.0;
+        let number = Rect::from_min_size(pos2(x, line_top), vec2(width, 64.0));
+        let label = self.i18n.tr("tempo-edit-tooltip");
+        let resp = ui
+            .interact(number, Id::unique("tempo-number"), Sense::click())
+            .on_hover_cursor(CursorIcon::Text)
+            .on_hover_text(&label);
+        resp.widget_info(|| {
+            let mut info = WidgetInfo::labeled(Role::Button, true, &label);
+            info.current_text_value = Some(tempo.to_string());
+            info
+        });
+        let painter = ui.painter();
         painter.galley(
             pos2(x, baseline - baseline_of(&whole)),
             whole.clone(),
@@ -179,23 +248,71 @@ impl View<'_> {
             frac,
             self.p.text2,
         );
+        if resp.double_clicked() {
+            *self.tempo_edit = Some(TempoEdit::new(tempo));
+        }
+    }
 
-        let (line, color) = match self.player.error() {
-            Some(e) => (error_text(self.i18n, e), ACCENT),
-            None => {
-                let marking = self.i18n.tr(&format!("tempo-{}", tempo.marking().id()));
-                let elapsed = format_elapsed(self.player.elapsed(self.now));
-                let line = self.i18n.tr_args(
-                    "tempo-subtitle",
-                    &[("marking", marking.into()), ("elapsed", elapsed.into())],
-                );
-                (line, self.p.text2)
-            }
+    /// The tempo text field: Enter applies, Esc cancels, clicking elsewhere
+    /// applies a valid value and drops an invalid one.
+    fn tempo_field(&mut self, ui: &mut Ui, rect: Rect, line_top: f32) {
+        let Some(edit) = self.tempo_edit.as_mut() else {
+            return;
         };
-        let max_w = plus.left() - minus.right() - 8.0;
-        let sub = text_elided(painter, &line, theme::medium(12.0), color, 0.4, max_w);
-        let pos = pos2(rect.center().x - sub.size().x / 2.0, line_top + 66.0);
-        painter.galley(pos, sub, color);
+        let field =
+            Rect::from_center_size(pos2(rect.center().x, line_top + 32.0), vec2(168.0, 64.0));
+        let border = if edit.invalid { ACCENT } else { self.p.border2 };
+        ui.painter().rect_filled(field, 12.0, self.p.surface);
+        ui.painter()
+            .rect_stroke(field, 12.0, Stroke::new(1.5, border), StrokeKind::Inside);
+
+        let id = Id::unique("tempo-field");
+        let resp = ui.put(
+            field.shrink2(vec2(10.0, 4.0)),
+            TextEdit::singleline(&mut edit.text)
+                .id(id)
+                .font(theme::bold(52.0))
+                .text_color(self.p.text)
+                .align(Align2::CENTER_CENTER)
+                .frame(egui::Frame::NONE)
+                .char_limit(TEMPO_CHARS)
+                .desired_width(field.width() - 20.0),
+        );
+        let label = self.i18n.tr("tempo-slider");
+        resp.widget_info(|| WidgetInfo::text_edit(true, "", &edit.text, &label));
+
+        if edit.opening {
+            edit.opening = false;
+            resp.request_focus();
+            if let Some(mut state) = TextEdit::load_state(ui.ctx(), id) {
+                let end = CCursor::new(edit.text.chars().count());
+                state
+                    .cursor
+                    .set_char_range(Some(CCursorRange::two(CCursor::new(0), end)));
+                state.store(ui.ctx(), id);
+            }
+        }
+        if resp.changed() {
+            edit.text
+                .retain(|c| c.is_ascii_digit() || c == '.' || c == ',');
+            edit.invalid = false;
+        }
+        if !resp.lost_focus() {
+            return;
+        }
+        let (enter, escape) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape)));
+        let parsed = parse_tempo(&edit.text);
+        if escape {
+            *self.tempo_edit = None;
+        } else if enter && parsed.is_none() {
+            edit.invalid = true;
+            resp.request_focus();
+        } else {
+            *self.tempo_edit = None;
+            if let Some(tempo) = parsed {
+                self.player.set_tempo(tempo);
+            }
+        }
     }
 
     fn tempo_slider(&mut self, ui: &mut Ui, rect: Rect) {
@@ -622,6 +739,14 @@ fn baseline_of(galley: &Galley) -> f32 {
         .unwrap_or(galley.size().y * 0.8)
 }
 
+/// A typed tempo: 1-999 BPM, "." or "," as the decimal separator,
+/// rounded to 0.1. `None` for anything else.
+fn parse_tempo(text: &str) -> Option<Tempo> {
+    let bpm: f64 = text.trim().replace(',', ".").parse().ok()?;
+    let (min, max) = (Tempo::MIN.bpm(), Tempo::MAX.bpm());
+    (bpm.is_finite() && (min..=max).contains(&bpm)).then(|| Tempo::from_bpm(bpm))
+}
+
 /// "1:23", or "1:02:03" past an hour.
 fn format_elapsed(d: Duration) -> String {
     let s = d.as_secs();
@@ -708,6 +833,23 @@ fn error_text(i18n: &I18n, error: &PlayerError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_tempo() {
+        let t = |s| parse_tempo(s).map(Tempo::bpm);
+        assert_eq!(t("120"), Some(120.0));
+        assert_eq!(t(" 96.5 "), Some(96.5));
+        assert_eq!(t("96,5"), Some(96.5));
+        assert_eq!(t("133.37"), Some(133.4));
+        assert_eq!(t("1"), Some(1.0));
+        assert_eq!(t("999"), Some(999.0));
+        assert_eq!(t(".5"), None, "below 1 BPM");
+        assert_eq!(t("0"), None);
+        assert_eq!(t("1000"), None);
+        assert_eq!(t(""), None);
+        assert_eq!(t("1.2.3"), None);
+        assert_eq!(t("NaN"), None);
+    }
 
     #[test]
     fn elapsed_format() {

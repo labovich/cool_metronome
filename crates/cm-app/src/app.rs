@@ -3,7 +3,7 @@
 use crate::i18n::I18n;
 use crate::player::Player;
 use crate::theme::{self, Palette};
-use crate::view::View;
+use crate::view::{TempoEdit, View};
 use cm_core::Rhythm;
 use egui::{Event, Key, Modifiers};
 use std::time::Instant;
@@ -18,6 +18,7 @@ pub struct MetronomeApp {
     player: Player,
     i18n: I18n,
     rhythms: Vec<Rhythm>,
+    tempo_edit: Option<TempoEdit>,
 }
 
 impl MetronomeApp {
@@ -32,6 +33,7 @@ impl MetronomeApp {
             player: Player::new(waker),
             i18n: I18n::english(),
             rhythms: Rhythm::builtin(),
+            tempo_edit: None,
         }
     }
 
@@ -68,6 +70,7 @@ impl eframe::App for MetronomeApp {
                     player: &mut self.player,
                     i18n: &self.i18n,
                     rhythms: &self.rhythms,
+                    tempo_edit: &mut self.tempo_edit,
                     p,
                     now: Instant::now(),
                 }

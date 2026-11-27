@@ -10,6 +10,9 @@ tempo-subtitle = BPM · { $marking } · { $elapsed }
 tempo-slower = Slower
 tempo-faster = Faster
 tempo-slider = Tempo
+tempo-edit-tooltip = Double-click to type a tempo
+tempo-edit-hint = Enter to apply · Esc to cancel
+tempo-edit-invalid = Type a tempo from 1 to 999 BPM
 
 tempo-largo = Largo
 tempo-larghetto = Larghetto

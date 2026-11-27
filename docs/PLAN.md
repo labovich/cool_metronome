@@ -144,10 +144,12 @@ the period in f32 makes them fail.
    - **4a, done:** main window (beats, BPM, tempo name, timer,
      slider, meter/subdivision menus with the rhythm library, volume, TAP, Play), light and
      dark themes following the system, Inter subset, Fluent strings (`crates/cm-app/i18n`),
-     UI zoom, beat indicator in sync with what is heard, minimal repaints. Presets button
+     UI zoom, typed tempo (double-click the number), beat indicator in sync with what is
+     heard, minimal repaints. Presets button
      is shown inactive until stage 5.
    - **4b:** custom title bar (pin, hide to tray — inactive until stage 6, minimize, close),
-     window drag/resize, compact mode, default local keymap.
+     window drag/resize, compact mode, default local keymap (shortcuts are ignored while a
+     text field such as the typed tempo has focus).
 5. Settings and data: options window (Sound, Volume, Interface, Hotkeys, Audio), own
    samples, per-slot volume, pan, fade-in, boost, device choice, profile storage,
    meter constructor, presets.
