@@ -20,6 +20,7 @@ options-title = Options
 options-tab-interface = Interface
 options-tab-audio = Audio
 options-tab-volume = Volume
+options-tab-sound = Sound
 options-defaults = Restore defaults
 
 options-theme = Theme
@@ -55,6 +56,16 @@ options-bell = Bell on the bar start in compound meters (3+2…)
 options-fade-in = Fade-in after start
 options-off = Off
 options-try = Try
+options-sound-builtin = Built-in
+options-sound-choose = Choose…
+options-sound-choose-title = Choose a sound
+options-sound-files = Sound files
+options-sound-error = Built-in sound plays: { $reason }
+options-sound-hint = WAV, FLAC, OGG or MP3. Stereo is mixed to mono; sounds longer than { $seconds } s are cut.
+sound-error-io = cannot read the file ({ $detail })
+sound-error-format = use a WAV, FLAC, OGG or MP3 file
+sound-error-decode = cannot decode the file ({ $detail })
+sound-error-empty = the file has no audio
 options-boost = Boost +6 dB
 options-accent-mix = Accent also plays the normal beat sound
 

@@ -36,6 +36,14 @@ eframe = { version = "0.37", default-features = false, features = [
 ] }
 egui = "0.37"
 
+# Own click samples: small pure-Rust decoders (no MPL symphonia).
+hound = "3"
+claxon = "0.4"
+lewton = "0.10"
+nanomp3 = "0.2"
+# Native file dialog for choosing samples.
+rfd = { version = "0.18", default-features = false }
+
 # UI strings (Fluent).
 fluent-bundle = "0.16"
 unic-langid = "0.9"

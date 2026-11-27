@@ -1,9 +1,17 @@
 //! Owns the audio output and keeps it in sync with the metronome settings.
 
-use cm_audio::{AudioError, AudioOutput, EngineSetup, Waker};
+use cm_audio::{AudioError, AudioOutput, Decoded, EngineSetup, SampleError, Waker};
 use cm_core::{Meter, Rhythm, Subdivision, TapTempo, Tempo};
-use cm_engine::{BarPattern, ClickKind, Command, EngineStatus};
+use cm_engine::{BarPattern, ClickKind, Command, EngineStatus, SoundBank};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+/// An own sound in a slot: its file and the decoded audio (or why not).
+#[derive(Debug)]
+struct OwnSound {
+    path: PathBuf,
+    decoded: Result<Decoded, SampleError>,
+}
 
 /// Why there is no sound.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +54,8 @@ pub struct Player {
     device: Option<String>,
     /// Requested buffer size in frames; `None` is the device default.
     buffer: Option<u32>,
+    /// Own sounds per slot (accent, normal, subdivision, bell); `None` is built in.
+    sounds: [Option<OwnSound>; 4],
     /// The chosen device is missing and the system default plays instead.
     on_fallback: bool,
     /// Elapsed time shown while stopped (the length of the last run).
@@ -95,6 +105,7 @@ impl Player {
             accent_mix: false,
             device: None,
             buffer: None,
+            sounds: Default::default(),
             on_fallback: false,
             elapsed_stopped: Duration::ZERO,
         };
@@ -168,6 +179,9 @@ impl Player {
                 }
                 self.audio = Some(audio);
                 self.error = None;
+                if self.sounds.iter().any(Option::is_some) {
+                    self.push_sounds();
+                }
             }
             Err(e) => {
                 self.audio = None;
@@ -359,6 +373,41 @@ impl Player {
             self.audio = None;
             self.open();
         }
+    }
+
+    /// Uses the sound file at `path` for a slot (`None`: the built-in sound).
+    /// The file is decoded once here; a bad file keeps the built-in sound
+    /// and reports why (see [`Player::sound_error`]).
+    pub fn set_sound(&mut self, slot: usize, path: Option<&Path>) {
+        let Some(current) = self.sounds.get_mut(slot) else {
+            return;
+        };
+        if current.as_ref().map(|s| s.path.as_path()) == path {
+            return;
+        }
+        *current = path.map(|p| OwnSound {
+            path: p.to_path_buf(),
+            decoded: cm_audio::decode_file(p),
+        });
+        self.push_sounds();
+    }
+
+    /// Why the own sound of a slot could not be used, if it could not.
+    pub fn sound_error(&self, slot: usize) -> Option<&SampleError> {
+        self.sounds.get(slot)?.as_ref()?.decoded.as_ref().err()
+    }
+
+    /// Sends the sound bank for the current output rate to the engine.
+    fn push_sounds(&mut self) {
+        let Some(rate) = self.audio.as_ref().map(AudioOutput::sample_rate) else {
+            return;
+        };
+        let builtin = SoundBank::synthesized(rate);
+        let sounds = std::array::from_fn(|i| match &self.sounds[i] {
+            Some(OwnSound { decoded: Ok(d), .. }) => cm_audio::prepare(d, rate),
+            _ => builtin.sound(i).to_vec(),
+        });
+        self.send(Command::SetSounds(Box::new(SoundBank::from_sounds(sounds))));
     }
 
     /// Frames per audio callback of the open output, and the sample rate.

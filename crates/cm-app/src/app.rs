@@ -6,8 +6,8 @@ use crate::keymap::{self, Action, Wheel};
 use crate::options::{Editable, OptionsWindow};
 use crate::player::Player;
 use crate::settings::{
-    AudioSettings, InterfaceSettings, MetronomeState, Settings, Store, ThemeChoice, VolumeSettings,
-    WindowState,
+    AudioSettings, InterfaceSettings, MetronomeState, Settings, SoundSettings, Store, ThemeChoice,
+    VolumeSettings, WindowState,
 };
 use crate::theme::{self, Palette};
 use crate::view::{TITLE_H, TempoEdit, View, WindowAction, window_menu};
@@ -50,6 +50,7 @@ pub struct MetronomeApp {
     interface: InterfaceSettings,
     audio: AudioSettings,
     volume: VolumeSettings,
+    sounds: SoundSettings,
     options: OptionsWindow,
     /// The theme last handed to egui.
     applied_theme: Option<ThemeChoice>,
@@ -81,6 +82,7 @@ impl MetronomeApp {
             interface: settings.interface.clone(),
             audio: settings.audio.clone(),
             volume: settings.volume.clone(),
+            sounds: settings.sounds.clone(),
             options: OptionsWindow::default(),
             applied_theme: None,
         }
@@ -101,6 +103,9 @@ impl MetronomeApp {
         p.set_tap_fractional(self.interface.tap_fractional);
         p.set_device(self.audio.device.clone());
         p.set_buffer(self.audio.buffer());
+        for slot in 0..4 {
+            p.set_sound(slot, self.sounds.path(slot));
+        }
         let theme = self.interface.theme();
         if self.applied_theme != Some(theme) {
             self.applied_theme = Some(theme);
@@ -140,6 +145,7 @@ impl MetronomeApp {
             interface: self.interface.clone(),
             audio: self.audio.clone(),
             volume: self.volume.clone(),
+            sounds: self.sounds.clone(),
             ..Settings::default()
         }
     }
@@ -312,6 +318,7 @@ impl eframe::App for MetronomeApp {
                 interface: &mut self.interface,
                 audio: &mut self.audio,
                 volume: &mut self.volume,
+                sounds: &mut self.sounds,
             },
             &mut self.player,
             &self.i18n,

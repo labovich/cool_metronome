@@ -7,6 +7,12 @@
 //! so the audio callback never allocates, frees, locks or blocks. A [`Waker`]
 //! tells the owner when the device fails, so it can recover even while idle.
 
+mod resample;
+mod samples;
+
+pub use resample::resample;
+pub use samples::{Decoded, EXTENSIONS, MAX_SECONDS, SampleError, decode_file, prepare};
+
 use cm_core::Tempo;
 use cm_engine::{BarPattern, Command, Engine, EngineStatus, Retired, SoundBank};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};

@@ -14,6 +14,10 @@ cm-core.workspace = true
 cm-engine.workspace = true
 cpal.workspace = true
 rtrb.workspace = true
+hound.workspace = true
+claxon.workspace = true
+lewton.workspace = true
+nanomp3.workspace = true
 
 [lints]
 workspace = true

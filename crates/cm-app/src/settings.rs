@@ -30,6 +30,7 @@ pub struct Settings {
     pub interface: InterfaceSettings,
     pub audio: AudioSettings,
     pub volume: VolumeSettings,
+    pub sounds: SoundSettings,
 }
 
 impl Default for Settings {
@@ -41,7 +42,41 @@ impl Default for Settings {
             interface: InterfaceSettings::default(),
             audio: AudioSettings::default(),
             volume: VolumeSettings::default(),
+            sounds: SoundSettings::default(),
         }
+    }
+}
+
+/// Options → Sound: own sound files; `None` is the built-in sound.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundSettings {
+    pub accent: Option<String>,
+    pub normal: Option<String>,
+    pub sub: Option<String>,
+    pub bell: Option<String>,
+}
+
+impl SoundSettings {
+    /// The slots in engine order: accent, normal, subdivision, bell.
+    pub fn slots_mut(&mut self) -> [&mut Option<String>; 4] {
+        [
+            &mut self.accent,
+            &mut self.normal,
+            &mut self.sub,
+            &mut self.bell,
+        ]
+    }
+
+    pub fn path(&self, slot: usize) -> Option<&Path> {
+        let s = match slot {
+            0 => &self.accent,
+            1 => &self.normal,
+            2 => &self.sub,
+            3 => &self.bell,
+            _ => return None,
+        };
+        s.as_deref().filter(|p| !p.is_empty()).map(Path::new)
     }
 }
 
@@ -520,6 +555,10 @@ mod tests {
                 pan: -0.5,
                 bell: false,
                 ..VolumeSettings::default()
+            },
+            sounds: SoundSettings {
+                bell: Some("C:/Samples/cowbell.wav".into()),
+                ..SoundSettings::default()
             },
         }
     }

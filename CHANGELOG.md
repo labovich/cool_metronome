@@ -43,6 +43,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Options window (key O, or right-click → Options…): theme, tempo slider range,
   quick jump step in BPM or percent, fractional tap tempo, output device,
   per-sound volume in dB, pan, bell in compound meters.
+- Own click sounds (Options → Sound): WAV, FLAC, OGG or MP3 per slot, with a
+  Try button; a file that cannot be used keeps the built-in sound and says why.
+- Options → Volume: fade-in after start, +6 dB boost, accent also plays the
+  normal sound. Options → Audio: buffer size.
 - Compact mode (440×96): double-click the title bar; expand button or a
   double-click on the strip returns to the full window.
 - Keyboard: Space play/stop, ←/→ ±1 BPM (Shift ±0.1), PgUp/PgDn and Ctrl+←/→ ±6,

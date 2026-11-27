@@ -167,8 +167,12 @@ the period in f32 makes them fail.
      Audio (output device; a missing device falls back to the system default), Volume
      (per-slot dB, pan, bell in compound meters). All saved in `settings.toml`.
      The Sound tab, fade-in, +6 dB boost, accent mix and buffer size come with 5c.
-   - 5c: engine for the new options (fade-in, boost, accent mix, own samples decoded with
-     hound / claxon / lewton / nanomp3, device and buffer choice).
+   - **5c, done:** fade-in after Start (even in dB from −30 dB, per-sample, block-size
+     independent, tested), +6 dB boost, accent mix, slot preview ("Try"), buffer size
+     (WASAPI shared mode keeps its own ~10 ms period; the tab says so), own sounds in a
+     Sound tab: WAV / FLAC / OGG / MP3 via hound / claxon / lewton / nanomp3, mixed to
+     mono, cut to 4 s, resampled by an own windowed-sinc resampler (no FFT dependency);
+     file dialog via `rfd`. Release binary 5.64 MB.
    - 5d: meter constructor and presets.
 
    Original scope: options window (Sound, Volume, Interface, Hotkeys, Audio), own

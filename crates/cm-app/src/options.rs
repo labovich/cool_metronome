@@ -3,7 +3,9 @@
 
 use crate::i18n::I18n;
 use crate::player::Player;
-use crate::settings::{AudioSettings, InterfaceSettings, ThemeChoice, VolumeSettings};
+use crate::settings::{
+    AudioSettings, InterfaceSettings, SoundSettings, ThemeChoice, VolumeSettings,
+};
 use crate::theme::{self, Palette};
 use egui::{ComboBox, DragValue, Grid, Key, RichText, Slider, Ui, ViewportBuilder, ViewportId};
 
@@ -13,16 +15,18 @@ enum Tab {
     Interface,
     Audio,
     Volume,
+    Sound,
 }
 
 impl Tab {
-    const ALL: [Tab; 3] = [Self::Interface, Self::Audio, Self::Volume];
+    const ALL: [Tab; 4] = [Self::Interface, Self::Audio, Self::Volume, Self::Sound];
 
     fn id(self) -> &'static str {
         match self {
             Self::Interface => "options-tab-interface",
             Self::Audio => "options-tab-audio",
             Self::Volume => "options-tab-volume",
+            Self::Sound => "options-tab-sound",
         }
     }
 }
@@ -32,6 +36,7 @@ pub struct Editable<'a> {
     pub interface: &'a mut InterfaceSettings,
     pub audio: &'a mut AudioSettings,
     pub volume: &'a mut VolumeSettings,
+    pub sounds: &'a mut SoundSettings,
 }
 
 #[derive(Debug, Default)]
@@ -81,6 +86,7 @@ impl OptionsWindow {
                         Tab::Interface => interface_tab(ui, edit.interface, i18n),
                         Tab::Audio => self.audio_tab(ui, edit.audio, player, i18n, &p),
                         Tab::Volume => volume_tab(ui, &mut edit, player, i18n),
+                        Tab::Sound => sound_tab(ui, edit.sounds, player, i18n, &p),
                     });
                 });
         });
@@ -329,5 +335,92 @@ fn volume_tab(ui: &mut Ui, edit: &mut Editable<'_>, player: &mut Player, i18n: &
     ui.add_space(14.0);
     if ui.button(i18n.tr("options-defaults")).clicked() {
         *v = VolumeSettings::default();
+    }
+}
+
+/// Own sound files per slot: choose, back to built-in, try.
+fn sound_tab(
+    ui: &mut Ui,
+    sounds: &mut SoundSettings,
+    player: &mut Player,
+    i18n: &I18n,
+    p: &Palette,
+) {
+    const SLOTS: [&str; 4] = [
+        "options-slot-accent",
+        "options-slot-normal",
+        "options-slot-sub",
+        "options-slot-bell",
+    ];
+    let builtin = i18n.tr("options-sound-builtin");
+    let mut try_slot = None;
+    Grid::new("sounds")
+        .num_columns(2)
+        .spacing([16.0, 12.0])
+        .show(ui, |ui| {
+            for (slot, file) in sounds.slots_mut().into_iter().enumerate() {
+                ui.label(i18n.tr(SLOTS[slot]));
+                ui.vertical(|ui| {
+                    let name = file
+                        .as_deref()
+                        .and_then(|f| std::path::Path::new(f).file_name())
+                        .map_or_else(|| builtin.clone(), |n| n.to_string_lossy().into_owned());
+                    ui.set_max_width(280.0);
+                    let shown = egui::Label::new(RichText::new(&name).color(p.text)).truncate();
+                    let resp = ui.add(shown);
+                    if let Some(full) = file.as_deref() {
+                        resp.on_hover_text(full);
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button(i18n.tr("options-sound-choose")).clicked()
+                            && let Some(path) = pick_sound(i18n)
+                        {
+                            *file = Some(path.to_string_lossy().into_owned());
+                        }
+                        if file.is_some() && ui.button(&builtin).clicked() {
+                            *file = None;
+                        }
+                        if ui.button(i18n.tr("options-try")).clicked() {
+                            try_slot = Some(slot);
+                        }
+                    });
+                    if let Some(e) = player.sound_error(slot) {
+                        let text = i18n.tr_args(
+                            "options-sound-error",
+                            &[("reason", sound_error_text(i18n, e).into())],
+                        );
+                        ui.label(RichText::new(text).color(theme::ACCENT));
+                    }
+                });
+                ui.end_row();
+            }
+        });
+    ui.add_space(10.0);
+    let hint = i18n.tr_args(
+        "options-sound-hint",
+        &[("seconds", format!("{}", cm_audio::MAX_SECONDS).into())],
+    );
+    ui.label(RichText::new(hint).color(p.text2));
+    if let Some(slot) = try_slot {
+        // The chosen file is applied before the next frame; try it then too.
+        player.preview(slot);
+    }
+}
+
+/// The system file dialog for a sound file (blocks until closed).
+fn pick_sound(i18n: &I18n) -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .set_title(i18n.tr("options-sound-choose-title"))
+        .add_filter(i18n.tr("options-sound-files"), &cm_audio::EXTENSIONS)
+        .pick_file()
+}
+
+fn sound_error_text(i18n: &I18n, e: &cm_audio::SampleError) -> String {
+    use cm_audio::SampleError as E;
+    match e {
+        E::Io(d) => i18n.tr_args("sound-error-io", &[("detail", d.as_str().into())]),
+        E::UnknownFormat => i18n.tr("sound-error-format"),
+        E::Decode(d) => i18n.tr_args("sound-error-decode", &[("detail", d.as_str().into())]),
+        E::Empty => i18n.tr("sound-error-empty"),
     }
 }

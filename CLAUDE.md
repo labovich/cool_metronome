@@ -39,5 +39,5 @@ Run fmt, clippy and tests before handing work back.
 ## Current state
 
 Stages 1–4 done (see `docs/PLAN.md` → Stages): `cm-app` shows the UI per the mockup with
-its own title bar, compact mode and keyboard control. Stages 5a (settings file) and 5b (options window) done. Next: 5c (engine: fade-in,
-boost, accent mix, own samples, buffer size; Sound tab).
+its own title bar, compact mode and keyboard control. Stages 5a–5c done (settings file, options window, engine options and own sounds).
+Next: 5d (meter constructor and presets).
