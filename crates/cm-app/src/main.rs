@@ -33,7 +33,11 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Cool Metronome",
         options,
-        Box::new(|_cc| Ok(Box::new(TestScreen::new()))),
+        Box::new(|cc| {
+            let ctx = cc.egui_ctx.clone();
+            let waker = cm_audio::Waker::new(move || ctx.request_repaint());
+            Ok(Box::new(TestScreen::new(waker)))
+        }),
     )
 }
 
@@ -45,9 +49,9 @@ struct TestScreen {
 }
 
 impl TestScreen {
-    fn new() -> Self {
+    fn new(waker: cm_audio::Waker) -> Self {
         Self {
-            player: Player::new(),
+            player: Player::new(waker),
             formula: "4".to_owned(),
             formula_ok: true,
         }
@@ -96,10 +100,28 @@ impl TestScreen {
     }
 }
 
-impl eframe::App for TestScreen {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.player.tick();
+impl TestScreen {
+    /// Beat indicator while playing; otherwise only what the player needs.
+    fn schedule_repaint(&self, ctx: &egui::Context) {
+        let frame = self
+            .player
+            .is_playing()
+            .then_some(Duration::from_millis(16));
+        if let Some(after) = frame.into_iter().chain(self.player.next_tick()).min() {
+            ctx.request_repaint_after(after);
+        }
+    }
+}
 
+impl eframe::App for TestScreen {
+    /// Runs on every pass, also while the window is minimized or hidden
+    /// (then `ui` is skipped), so the audio housekeeping never stalls.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.player.tick();
+        self.schedule_repaint(ctx);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Cool Metronome — engine test");
             ui.add_space(8.0);
@@ -191,12 +213,7 @@ impl eframe::App for TestScreen {
                 (None, None) => {}
             }
         });
-
-        let ctx = ui.ctx();
-        if self.player.is_playing() {
-            ctx.request_repaint_after(Duration::from_millis(16));
-        } else if self.player.error().is_some() {
-            ctx.request_repaint_after(Player::RETRY_INTERVAL);
-        }
+        // Commands sent above may need a follow-up tick.
+        self.schedule_repaint(ui.ctx());
     }
 }

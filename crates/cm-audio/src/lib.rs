@@ -4,7 +4,8 @@
 //! the device callback. The UI talks to the engine through a lock-free queue
 //! ([`AudioOutput::send`]); objects the engine replaces come back through a
 //! second queue and are dropped on the UI thread ([`AudioOutput::collect_garbage`]),
-//! so the audio callback never allocates, frees, locks or blocks.
+//! so the audio callback never allocates, frees, locks or blocks. A [`Waker`]
+//! tells the owner when the device fails, so it can recover even while idle.
 
 use cm_core::Tempo;
 use cm_engine::{BarPattern, Command, Engine, EngineStatus, Retired, SoundBank};
@@ -52,6 +53,31 @@ impl fmt::Display for AudioError {
 
 impl std::error::Error for AudioError {}
 
+/// Wakes the owner when the output fails, so it can recover even while idle
+/// (no UI frames are running).
+///
+/// Called from the stream's error callback, never from the audio data callback,
+/// so it may lock or allocate (e.g. `egui::Context::request_repaint`).
+#[derive(Clone)]
+pub struct Waker(Arc<dyn Fn() + Send + Sync>);
+
+impl Waker {
+    /// Wraps the function to call.
+    pub fn new(wake: impl Fn() + Send + Sync + 'static) -> Self {
+        Self(Arc::new(wake))
+    }
+
+    fn wake(&self) {
+        (self.0)();
+    }
+}
+
+impl fmt::Debug for Waker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Waker")
+    }
+}
+
 /// What the engine starts with.
 #[derive(Debug, Clone)]
 pub struct EngineSetup {
@@ -98,11 +124,16 @@ pub fn output_device_names() -> Vec<String> {
 
 impl AudioOutput {
     /// Opens `device` (or the system default output) and starts the stream.
-    /// The engine is stopped until [`Command::Start`] is sent.
+    /// The engine is stopped until [`Command::Start`] is sent. `waker` is
+    /// called once when the device fails (see [`AudioOutput::has_failed`]).
     ///
     /// # Errors
     /// If the device is missing, its format is unsupported or the stream fails.
-    pub fn open(device: Option<&str>, setup: EngineSetup) -> Result<Self, AudioError> {
+    pub fn open(
+        device: Option<&str>,
+        setup: EngineSetup,
+        waker: Option<Waker>,
+    ) -> Result<Self, AudioError> {
         let host = cpal::default_host();
         let device = match device {
             Some(name) => host
@@ -141,6 +172,7 @@ impl AudioOutput {
             commands: command_rx,
             retired: retired_tx,
             failed: Arc::clone(&failed),
+            waker,
         };
 
         let stream = match format {
@@ -224,6 +256,7 @@ struct CallbackParts {
     commands: rtrb::Consumer<Command>,
     retired: rtrb::Producer<Retired>,
     failed: Arc<AtomicBool>,
+    waker: Option<Waker>,
 }
 
 fn build<T>(
@@ -240,6 +273,7 @@ where
         mut commands,
         mut retired,
         failed,
+        waker,
     } = parts;
     // Allocated once here, never in the callback.
     let mut scratch = vec![0.0_f32; MAX_BLOCK_FRAMES * channels];
@@ -260,8 +294,12 @@ where
             let _ = retired.push(r);
         });
     };
+    // Not the real-time path: the stream is already broken when this runs.
     let error_callback = move |_err| {
-        failed.store(true, Ordering::Relaxed);
+        let first = !failed.swap(true, Ordering::Relaxed);
+        if first && let Some(waker) = &waker {
+            waker.wake();
+        }
     };
 
     device

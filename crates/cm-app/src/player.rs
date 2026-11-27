@@ -1,6 +1,6 @@
 //! Owns the audio output and keeps it in sync with the metronome settings.
 
-use cm_audio::{AudioOutput, EngineSetup};
+use cm_audio::{AudioOutput, EngineSetup, Waker};
 use cm_core::{Meter, Subdivision, Tempo};
 use cm_engine::{BarPattern, Command};
 use std::time::{Duration, Instant};
@@ -8,8 +8,12 @@ use std::time::{Duration, Instant};
 #[derive(Debug)]
 pub struct Player {
     audio: Option<AudioOutput>,
+    waker: Waker,
     error: Option<String>,
     last_attempt: Option<Instant>,
+    /// Set after a command that may make the engine retire an object;
+    /// one more [`Player::tick`] is due then to drop it.
+    cleanup_after: Option<Instant>,
     tempo: Tempo,
     meter: Meter,
     subdivision: Subdivision,
@@ -20,12 +24,19 @@ pub struct Player {
 impl Player {
     /// How often to retry opening the audio device after a failure.
     pub const RETRY_INTERVAL: Duration = Duration::from_secs(2);
+    /// How long after a command to collect what the engine replaced.
+    /// The audio callback runs every few milliseconds, so it is done by then.
+    const CLEANUP_DELAY: Duration = Duration::from_millis(100);
 
-    pub fn new() -> Self {
+    /// `waker` must make the owner call [`Player::tick`] soon; it is called
+    /// from another thread when the audio device fails.
+    pub fn new(waker: Waker) -> Self {
         let mut p = Self {
             audio: None,
+            waker,
             error: None,
             last_attempt: None,
+            cleanup_after: None,
             tempo: Tempo::DEFAULT,
             meter: Meter::default(),
             subdivision: Subdivision::None,
@@ -36,11 +47,19 @@ impl Player {
         p
     }
 
-    /// Call once per UI frame: frees replaced engine objects and recovers
-    /// from a lost device (unplugged headphones, changed default output).
+    /// Frees replaced engine objects and recovers from a lost device
+    /// (unplugged headphones, changed default output). Call it on every UI
+    /// pass, including while the window is hidden, and again after
+    /// [`Player::next_tick`].
     pub fn tick(&mut self) {
         if let Some(audio) = &mut self.audio {
             audio.collect_garbage();
+            if self
+                .cleanup_after
+                .is_some_and(|t| t.elapsed() >= Self::CLEANUP_DELAY)
+            {
+                self.cleanup_after = None;
+            }
             if audio.has_failed() {
                 self.audio = None;
                 self.open();
@@ -53,6 +72,16 @@ impl Player {
         }
     }
 
+    /// When [`Player::tick`] must run again even if nothing else happens
+    /// (besides a wake-up through the [`Waker`]). `None`: not needed.
+    pub fn next_tick(&self) -> Option<Duration> {
+        if self.audio.is_none() {
+            return Some(Self::RETRY_INTERVAL);
+        }
+        self.cleanup_after
+            .map(|t| Self::CLEANUP_DELAY.saturating_sub(t.elapsed()))
+    }
+
     fn open(&mut self) {
         self.last_attempt = Some(Instant::now());
         let setup = EngineSetup {
@@ -60,7 +89,7 @@ impl Player {
             pattern: self.pattern(),
             sounds: None,
         };
-        match AudioOutput::open(None, setup) {
+        match AudioOutput::open(None, setup, Some(self.waker.clone())) {
             Ok(mut audio) => {
                 if self.playing {
                     let _ = audio.send(Command::Start);
@@ -80,11 +109,20 @@ impl Player {
     }
 
     fn send(&mut self, command: Command) {
-        if let Some(audio) = &mut self.audio
-            && audio.send(command).is_err()
-        {
-            self.error = Some("the audio engine is not responding".to_owned());
+        let Some(audio) = &mut self.audio else {
+            return;
+        };
+        if matches!(
+            command,
+            Command::Start | Command::Stop | Command::SetPattern(_) | Command::SetSounds(_)
+        ) {
+            self.cleanup_after = Some(Instant::now());
         }
+        // While a device is open, the only possible error is this one.
+        self.error = audio
+            .send(command)
+            .is_err()
+            .then(|| "the audio engine is not responding".to_owned());
     }
 
     fn push_pattern(&mut self) {
