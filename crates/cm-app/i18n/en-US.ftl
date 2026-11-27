@@ -47,6 +47,11 @@ options-pan-left = L
 options-pan-right = R
 options-pan-center = Center
 options-bell = Bell on the bar start in compound meters (3+2…)
+options-fade-in = Fade-in after start
+options-off = Off
+options-try = Try
+options-boost = Boost +6 dB
+options-accent-mix = Accent also plays the normal beat sound
 
 ## Tempo
 

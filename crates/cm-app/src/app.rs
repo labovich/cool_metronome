@@ -95,6 +95,9 @@ impl MetronomeApp {
         }
         p.set_pan(self.volume.pan());
         p.set_bell(self.volume.bell);
+        p.set_boost(self.volume.boost);
+        p.set_fade_in(self.volume.fade_in());
+        p.set_accent_mix(self.volume.accent_mix);
         p.set_tap_fractional(self.interface.tap_fractional);
         p.set_device(self.audio.device.clone());
         let theme = self.interface.theme();
@@ -309,7 +312,7 @@ impl eframe::App for MetronomeApp {
                 audio: &mut self.audio,
                 volume: &mut self.volume,
             },
-            &self.player,
+            &mut self.player,
             &self.i18n,
             self.pinned,
         );

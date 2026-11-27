@@ -161,6 +161,12 @@ pub struct VolumeSettings {
     pub pan: f32,
     /// Bell on the bar start in compound meters (3+2…).
     pub bell: bool,
+    /// +6 dB on top of the master volume.
+    pub boost: bool,
+    /// Fade-in after Start, seconds (0 = off).
+    pub fade_in: f32,
+    /// Accented beats also play the normal beat sound.
+    pub accent_mix: bool,
 }
 
 impl Default for VolumeSettings {
@@ -172,6 +178,9 @@ impl Default for VolumeSettings {
             bell_db: -9.0,
             pan: 0.0,
             bell: true,
+            boost: false,
+            fade_in: 0.0,
+            accent_mix: false,
         }
     }
 }
@@ -189,6 +198,17 @@ impl VolumeSettings {
                 0.0
             }
         })
+    }
+
+    /// Longest fade-in in the options, seconds.
+    pub const MAX_FADE: f32 = 30.0;
+
+    pub fn fade_in(&self) -> f32 {
+        if self.fade_in.is_finite() {
+            self.fade_in.clamp(0.0, Self::MAX_FADE)
+        } else {
+            0.0
+        }
     }
 
     pub fn pan(&self) -> f32 {

@@ -48,7 +48,7 @@ impl OptionsWindow {
         &mut self,
         ctx: &egui::Context,
         mut edit: Editable<'_>,
-        player: &Player,
+        player: &mut Player,
         i18n: &I18n,
         on_top: bool,
     ) {
@@ -59,7 +59,7 @@ impl OptionsWindow {
         let title = i18n.tr("options-title");
         let mut builder = ViewportBuilder::default()
             .with_title(&title)
-            .with_inner_size([460.0, 340.0])
+            .with_inner_size([480.0, 430.0])
             .with_min_inner_size([420.0, 300.0]);
         if on_top {
             builder = builder.with_window_level(egui::WindowLevel::AlwaysOnTop);
@@ -77,11 +77,11 @@ impl OptionsWindow {
                 .show(ui, |ui| {
                     self.tabs(ui, i18n, &p);
                     ui.add_space(10.0);
-                    match self.tab {
+                    egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
                         Tab::Interface => interface_tab(ui, edit.interface, i18n),
                         Tab::Audio => self.audio_tab(ui, edit.audio, player, i18n, &p),
-                        Tab::Volume => volume_tab(ui, &mut edit, i18n),
-                    }
+                        Tab::Volume => volume_tab(ui, &mut edit, player, i18n),
+                    });
                 });
         });
         if !self.open {
@@ -217,7 +217,7 @@ fn interface_tab(ui: &mut Ui, s: &mut InterfaceSettings, i18n: &I18n) {
     }
 }
 
-fn volume_tab(ui: &mut Ui, edit: &mut Editable<'_>, i18n: &I18n) {
+fn volume_tab(ui: &mut Ui, edit: &mut Editable<'_>, player: &mut Player, i18n: &I18n) {
     let v = &mut *edit.volume;
     Grid::new("volume")
         .num_columns(2)
@@ -229,16 +229,23 @@ fn volume_tab(ui: &mut Ui, edit: &mut Editable<'_>, i18n: &I18n) {
                 ("options-slot-sub", &mut v.sub_db),
                 ("options-slot-bell", &mut v.bell_db),
             ];
-            for (id, db) in slots {
+            let try_label = i18n.tr("options-try");
+            for (slot, (id, db)) in slots.into_iter().enumerate() {
                 ui.label(i18n.tr(id));
-                ui.add(
-                    Slider::new(db, VolumeSettings::MIN_DB..=0.0)
-                        .step_by(0.5)
-                        .suffix(" dB"),
-                );
+                ui.horizontal(|ui| {
+                    ui.add(
+                        Slider::new(db, VolumeSettings::MIN_DB..=0.0)
+                            .step_by(0.5)
+                            .suffix(" dB"),
+                    );
+                    if ui.button(&try_label).clicked() {
+                        player.preview(slot);
+                    }
+                });
                 ui.end_row();
             }
 
+            let off = i18n.tr("options-off");
             ui.label(i18n.tr("options-pan"));
             let (left, right, center) = (
                 i18n.tr("options-pan-left"),
@@ -260,6 +267,26 @@ fn volume_tab(ui: &mut Ui, edit: &mut Editable<'_>, i18n: &I18n) {
             );
             ui.end_row();
 
+            ui.label(i18n.tr("options-fade-in"));
+            ui.add(
+                Slider::new(&mut v.fade_in, 0.0..=VolumeSettings::MAX_FADE)
+                    .step_by(0.5)
+                    .custom_formatter(move |x, _| {
+                        if x <= 0.0 {
+                            off.clone()
+                        } else {
+                            format!("{x:.1} s")
+                        }
+                    }),
+            );
+            ui.end_row();
+
+            ui.label("");
+            ui.checkbox(&mut v.boost, i18n.tr("options-boost"));
+            ui.end_row();
+            ui.label("");
+            ui.checkbox(&mut v.accent_mix, i18n.tr("options-accent-mix"));
+            ui.end_row();
             ui.label("");
             ui.checkbox(&mut v.bell, i18n.tr("options-bell"));
             ui.end_row();

@@ -36,6 +36,12 @@ pub struct Player {
     slots_db: [f32; 4],
     /// Stereo position, −1 … 1.
     pan: f32,
+    /// +6 dB on top of the master volume.
+    boost: bool,
+    /// Fade-in after Start, seconds (0 = off).
+    fade_in: f32,
+    /// Accented beats also play the normal sound.
+    accent_mix: bool,
     /// Chosen output device; `None` is the system default.
     device: Option<String>,
     /// The chosen device is missing and the system default plays instead.
@@ -82,6 +88,9 @@ impl Player {
             tap_epoch: Instant::now(),
             slots_db: [0.0, -5.0, -15.0, -9.0],
             pan: 0.0,
+            boost: false,
+            fade_in: 0.0,
+            accent_mix: false,
             device: None,
             on_fallback: false,
             elapsed_stopped: Duration::ZERO,
@@ -143,7 +152,9 @@ impl Player {
         }
         match result {
             Ok(mut audio) => {
-                let _ = audio.send(Command::SetMaster(volume_gain(self.volume)));
+                let _ = audio.send(Command::SetMaster(self.master_gain()));
+                let _ = audio.send(Command::SetFadeIn(self.fade_in));
+                let _ = audio.send(Command::SetAccentMix(self.accent_mix));
                 for (slot, db) in self.slots_db.into_iter().enumerate() {
                     let _ = audio.send(Command::SetGain(SLOTS[slot], db_gain(db)));
                 }
@@ -263,7 +274,7 @@ impl Player {
         let volume = volume.clamp(0.0, 1.0);
         if (volume - self.volume).abs() > f32::EPSILON {
             self.volume = volume;
-            self.send(Command::SetMaster(volume_gain(volume)));
+            self.send(Command::SetMaster(self.master_gain()));
         }
     }
 
@@ -290,6 +301,41 @@ impl Player {
             self.bell = bell;
             self.push_pattern();
         }
+    }
+
+    /// +6 dB on top of the master volume.
+    pub fn set_boost(&mut self, boost: bool) {
+        if boost != self.boost {
+            self.boost = boost;
+            self.send(Command::SetMaster(self.master_gain()));
+        }
+    }
+
+    /// Fade-in after Start, seconds (0 = off).
+    pub fn set_fade_in(&mut self, seconds: f32) {
+        if (seconds - self.fade_in).abs() > f32::EPSILON {
+            self.fade_in = seconds;
+            self.send(Command::SetFadeIn(seconds));
+        }
+    }
+
+    /// Accented beats also play the normal beat sound.
+    pub fn set_accent_mix(&mut self, on: bool) {
+        if on != self.accent_mix {
+            self.accent_mix = on;
+            self.send(Command::SetAccentMix(on));
+        }
+    }
+
+    /// Plays one sound slot (accent, normal, subdivision, bell) now.
+    pub fn preview(&mut self, slot: usize) {
+        if let Some(kind) = SLOTS.get(slot) {
+            self.send(Command::Preview(*kind));
+        }
+    }
+
+    fn master_gain(&self) -> f32 {
+        volume_gain(self.volume) * if self.boost { 2.0 } else { 1.0 }
     }
 
     /// Plays on `device` (`None`: the system default), reopening the output.

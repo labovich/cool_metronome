@@ -30,7 +30,19 @@ pub enum Command {
     SetMaster(f32),
     /// Stereo position, -1 (left) … 1 (right).
     SetPan(f32),
+    /// Fade-in after Start, in seconds (0 = off): the level rises evenly in
+    /// decibels from [`FADE_FLOOR_DB`] to full.
+    SetFadeIn(f32),
+    /// Accented beats also play the normal beat sound.
+    SetAccentMix(bool),
+    /// Plays one sound slot now (to try a sound), playing or not.
+    Preview(ClickKind),
 }
+
+/// Level at the very start of a fade-in, in dB.
+pub const FADE_FLOOR_DB: f64 = -30.0;
+/// Longest fade-in, in seconds.
+pub const MAX_FADE_SECONDS: f32 = 60.0;
 
 /// Something the engine no longer needs. Must be dropped off the audio thread.
 #[derive(Debug)]
@@ -212,6 +224,11 @@ pub struct Engine {
     master: f32,
     pan: [f32; 2],
     clock: u64,
+    sample_rate: u32,
+    /// Fade-in length in samples (0 = off) and the sample it started at.
+    fade_samples: u64,
+    fade_start: u64,
+    accent_mix: bool,
     status: Arc<EngineStatus>,
     retired: [Option<Retired>; RETIRED_SLOTS],
 }
@@ -239,6 +256,10 @@ impl Engine {
             master: 1.0,
             pan: pan_gains(0.0),
             clock: 0,
+            sample_rate,
+            fade_samples: 0,
+            fade_start: 0,
+            accent_mix: false,
             status,
             retired: Default::default(),
         }
@@ -251,6 +272,7 @@ impl Engine {
                 let r = self.scheduler.start(self.clock);
                 self.retire_pattern(r);
                 self.status.started_at.store(self.clock, Ordering::Relaxed);
+                self.fade_start = self.clock;
                 self.status.playing.store(true, Ordering::Relaxed);
             }
             Command::Stop => {
@@ -274,6 +296,23 @@ impl Engine {
             }
             Command::SetMaster(g) => self.master = sanitize_gain(g),
             Command::SetPan(p) => self.pan = pan_gains(p),
+            Command::SetFadeIn(seconds) => {
+                let s = if seconds.is_finite() {
+                    seconds.clamp(0.0, MAX_FADE_SECONDS)
+                } else {
+                    0.0
+                };
+                // Bounded by MAX_FADE_SECONDS × the sample rate.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let n = (f64::from(s) * f64::from(self.sample_rate)).round() as u64;
+                self.fade_samples = n;
+            }
+            Command::SetAccentMix(on) => self.accent_mix = on,
+            Command::Preview(kind) => {
+                if let Some(slot) = kind.sound_index() {
+                    self.start_voice(slot, 0);
+                }
+            }
         }
     }
 
@@ -312,6 +351,9 @@ impl Engine {
             let offset = usize::try_from(ev.sample.saturating_sub(self.clock)).unwrap_or(0);
             if let Some(slot) = ev.kind.sound_index() {
                 self.start_voice(slot, offset);
+            }
+            if self.accent_mix && ev.kind == ClickKind::Accent {
+                self.start_voice(ClickKind::Normal.sound_index().unwrap_or(1), offset);
             }
             if ev.kind.is_cell() {
                 self.publish_beat(ev.sample.max(self.clock), ev.cell, ev.bar);
@@ -353,11 +395,32 @@ impl Engine {
             }
         }
 
+        self.apply_fade(out, channels);
         for s in out.iter_mut() {
             *s = s.clamp(-1.0, 1.0);
         }
         self.clock = block_end;
         self.status.clock.store(self.clock, Ordering::Relaxed);
+    }
+
+    /// Scales the block by the fade-in gain of each sample. The gain is
+    /// computed from the sample's distance to Start, so it does not depend
+    /// on the block size.
+    fn apply_fade(&self, out: &mut [f32], channels: usize) {
+        if self.fade_samples == 0 || !self.scheduler.is_running() {
+            return;
+        }
+        let into = self.clock.saturating_sub(self.fade_start);
+        if into >= self.fade_samples {
+            return;
+        }
+        let left = usize::try_from(self.fade_samples - into).unwrap_or(usize::MAX);
+        for (i, frame) in out.chunks_exact_mut(channels).take(left).enumerate() {
+            let g = fade_gain(into + i as u64, self.fade_samples);
+            for s in frame {
+                *s *= g;
+            }
+        }
     }
 
     fn start_voice(&mut self, slot: usize, delay: usize) {
@@ -405,6 +468,20 @@ impl Engine {
         // All slots full: the owner is not collecting. Dropping here is the
         // lesser evil (one deallocation) compared to growing a list.
     }
+}
+
+/// Fade-in gain `pos` samples after Start: even in dB from
+/// [`FADE_FLOOR_DB`] to 0 dB over `len` samples.
+#[must_use]
+pub fn fade_gain(pos: u64, len: u64) -> f32 {
+    if len == 0 || pos >= len {
+        return 1.0;
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let t = pos as f64 / len as f64;
+    #[allow(clippy::cast_possible_truncation)]
+    let g = 10f64.powf(FADE_FLOOR_DB * (1.0 - t) / 20.0) as f32;
+    g
 }
 
 fn sanitize_gain(g: f32) -> f32 {
@@ -515,6 +592,73 @@ mod tests {
         assert_eq!(later - base, Duration::from_secs(1));
         assert_eq!(base - earlier, Duration::from_millis(500));
         assert!(base > Instant::now(), "heard after the latency");
+    }
+
+    #[test]
+    fn fade_in_is_block_size_independent() {
+        let render_all = |block: usize| {
+            let mut e = engine(240.0, 48_000);
+            e.handle(Command::SetFadeIn(2.0));
+            e.handle(Command::Start);
+            let mut out = vec![0.0_f32; 3 * 48_000];
+            for chunk in out.chunks_mut(block) {
+                e.render(chunk, 1);
+            }
+            out
+        };
+        let a = render_all(1);
+        let b = render_all(512);
+        let c = render_all(4096);
+        assert!(a == b && b == c, "same output for any block size");
+        // Clicks every 12 000 samples: each one scaled by the gain at its sample.
+        let fade = 2 * 48_000;
+        for k in 0..12_u64 {
+            let at = k * 12_000;
+            let expect = (if k % 4 == 0 { 0.5 } else { 0.25 }) * fade_gain(at, fade);
+            let got = a[usize::try_from(at).unwrap()];
+            assert!((got - expect).abs() < 1e-6, "click {k}: {got} vs {expect}");
+        }
+        assert!(
+            (fade_gain(0, fade) - 0.031_622_8).abs() < 1e-6,
+            "starts at -30 dB"
+        );
+        assert!((fade_gain(fade, fade) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn fade_restarts_with_every_start() {
+        let mut e = engine(120.0, 48_000);
+        e.handle(Command::SetFadeIn(1.0));
+        let mut buf = vec![0.0_f32; 100_000];
+        e.handle(Command::Start);
+        e.render(&mut buf, 1);
+        e.handle(Command::Stop);
+        e.render(&mut buf, 1);
+        e.handle(Command::Start);
+        let mut buf = vec![0.0_f32; 16];
+        e.render(&mut buf, 1);
+        assert!((buf[0] - 0.5 * fade_gain(0, 48_000)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn accent_mix_adds_the_normal_sound() {
+        let mut e = engine(120.0, 48_000);
+        e.handle(Command::SetAccentMix(true));
+        e.handle(Command::Start);
+        let mut buf = vec![0.0_f32; 30_000];
+        e.render(&mut buf, 1);
+        assert!((buf[0] - 0.75).abs() < 1e-6, "accent 0.5 + normal 0.25");
+        assert!((buf[24_000] - 0.25).abs() < 1e-6, "normal beats unchanged");
+    }
+
+    #[test]
+    fn preview_plays_while_stopped() {
+        let mut e = engine(120.0, 48_000);
+        e.handle(Command::Preview(ClickKind::Bell));
+        let mut buf = vec![0.0_f32; 8];
+        e.render(&mut buf, 1);
+        assert!((buf[0] - 0.0625 * Engine::DEFAULT_GAINS[3]).abs() < 1e-6);
+        assert!(buf[1..].iter().all(|s| *s == 0.0));
     }
 
     #[test]

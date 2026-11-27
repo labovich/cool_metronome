@@ -10,7 +10,10 @@ mod pattern;
 mod scheduler;
 mod sounds;
 
-pub use engine::{BeatInfo, Command, Engine, EngineStatus, MAX_VOICES, Retired};
+pub use engine::{
+    BeatInfo, Command, Engine, EngineStatus, FADE_FLOOR_DB, MAX_FADE_SECONDS, MAX_VOICES, Retired,
+    fade_gain,
+};
 pub use grid::BeatGrid;
 pub use pattern::{BarPattern, ClickKind, PatternEvent};
 pub use scheduler::{ScheduledEvent, Scheduler};
